@@ -19,10 +19,13 @@
 pub type Seq = String;
 pub type Qual = String;
 
+pub type Barcode = String;
+pub type Molecular = String;
+
 #[derive(Hash, Eq, PartialEq, Debug)]
 pub struct Identifier {
-    pub bc: Seq,
-    pub umi: Seq,
+    pub bc: Barcode,
+    pub umi: Molecular,
 }
 
 #[derive(Debug)]

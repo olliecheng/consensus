@@ -5,6 +5,8 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
+// TODO: refactor Reader and FastQReader into separate files, possibly reader/fastq.rs
+
 pub trait Reader {
     fn read(&mut self) -> PairingCollection;
 }
@@ -54,6 +56,9 @@ where
     type Item = Result<ReadWithQual, MalformedFileError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // TODO: clean this up, it's super ugly as is
+        // maybe abstract away read_record()?
+
         let metadata = self.iter.next();
         let seq = self.iter.next();
         let empty = self.iter.next();
@@ -81,17 +86,14 @@ where
         }
         assert!(
             empty.starts_with("+"),
-            "block starting line {} has no starting +: \n```\n{}\n{}\n{}\n{}",
+            "block starting line {} has no starting +",
             self.lines + 1,
-            metadata,
-            seq,
-            empty,
-            qual
         );
 
         let id = self.parser(&metadata);
 
         self.lines += 4;
+
         Some(Ok({
             ReadWithQual {
                 metadata,
@@ -139,14 +141,6 @@ impl FastQReader {
             umi: Seq::from(umi),
         }
     }
-
-    // fn read(&mut self) {
-    //     for line in self.load_seq() {
-    //         if let Ok(line) = line {
-    //             println!("{}", line);
-    //         }
-    //     }
-    // }
 }
 
 #[derive(Debug)]
