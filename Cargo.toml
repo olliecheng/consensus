@@ -1,0 +1,15 @@
+[package]
+name = "proj"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bio-seq = "0.10.0"
+clap = { version = "4.2.7", features = ["derive"] }
+xxhash-rust = {version = "0.8.6", features = ["xxh3", "const_xxh3"] }
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

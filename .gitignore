@@ -1,0 +1,11 @@
+/debug
+/target
+
+.DS_Store
+
+# testing files
+/data
+
+Cargo.lock
+**/*.rs.bk
+
