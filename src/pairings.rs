@@ -6,6 +6,9 @@ use std::vec::Vec;
 use xxhash_rust::xxh3::Xxh3Builder as Hasher;
 
 #[derive(Debug)]
+pub struct BarcodeCollection {}
+
+#[derive(Debug)]
 pub struct PairingCollection {
     pub pairings: HashMap<Identifier, Vec<Seq>, Hasher>,
     duplicates_set: HashSet<Identifier, Hasher>,
