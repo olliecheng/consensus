@@ -18,7 +18,6 @@
 
 pub mod id;
 pub mod seq;
-pub mod transformer;
 
 pub use self::id::Identifier;
 pub use self::seq::Seq;

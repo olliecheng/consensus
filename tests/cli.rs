@@ -20,8 +20,8 @@ fn file_doesnt_exist() -> TestResult {
 #[test]
 fn small_file_output() -> TestResult {
     let mut cmd = Command::cargo_bin(BINARY)?;
-    let intended_out = std::fs::read("data/small.fastq.out")?;
-    cmd.arg("data/small.fastq");
+    let intended_out = std::fs::read("tests/samples/small.fastq.out")?;
+    cmd.arg("tests/samples/small.fastq");
     cmd.assert().success().stdout(predicate::eq(intended_out));
 
     Ok(())

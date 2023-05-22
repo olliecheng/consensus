@@ -97,7 +97,7 @@ where
         Some(Ok({
             ReadWithQual {
                 metadata,
-                seq,
+                seq: Seq::new(&seq),
                 id,
                 qual,
             }
@@ -137,8 +137,8 @@ impl FastQReader {
         let umi = &metadata[self.options.bc + 2..(self.options.bc + 2 + self.options.umi)];
 
         Identifier {
-            bc: Seq::from(bc),
-            umi: Seq::from(umi),
+            bc: Seq::new(bc),
+            umi: Seq::new(umi),
         }
     }
 }
