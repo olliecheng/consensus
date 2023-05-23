@@ -23,7 +23,7 @@ pub struct FastQReader {
 }
 
 struct FastQReadIterator {
-    bytes: Bytes<BufReader<File>>,
+    bytes: ByteReader,
     options: Options,
     lines: u64,
     eof: bool,
@@ -32,7 +32,7 @@ struct FastQReadIterator {
 impl FastQReadIterator {
     fn new(reader: BufReader<File>, options: Options) -> Self {
         Self {
-            bytes: reader.bytes(),
+            bytes: ByteReader::new(reader),
             options,
             lines: 0,
             eof: false,
@@ -42,10 +42,7 @@ impl FastQReadIterator {
 
 impl FastQReadIterator {
     fn read_next_byte(&mut self) -> Option<u8> {
-        match self.bytes.next() {
-            Some(x) => Some(x.expect("Reading a byte should never fail")),
-            None => None,
-        }
+        self.bytes.next_byte()
     }
 
     fn read_next_byte_without_eof(&mut self) -> u8 {
@@ -210,5 +207,50 @@ impl std::error::Error for MalformedFileError {}
 impl fmt::Display for MalformedFileError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.description)
+    }
+}
+
+const BYTE_READER_BUFFER_SIZE: usize = 512;
+
+struct ByteReader {
+    reader: BufReader<std::fs::File>,
+    buffer: [u8; BYTE_READER_BUFFER_SIZE],
+    idx: usize,
+    buffer_size: usize,
+}
+
+impl ByteReader {
+    fn new(reader: BufReader<std::fs::File>) -> Self {
+        Self {
+            reader,
+            buffer: [0; BYTE_READER_BUFFER_SIZE],
+            idx: BYTE_READER_BUFFER_SIZE,
+            buffer_size: BYTE_READER_BUFFER_SIZE,
+        }
+    }
+
+    fn next_byte(&mut self) -> Option<u8> {
+        // do we need to refill the buffer?
+        if self.idx >= BYTE_READER_BUFFER_SIZE {
+            match self.reader.read(&mut self.buffer) {
+                Ok(0) => {
+                    return None;
+                }
+                Ok(n) => {
+                    self.buffer_size = n;
+                    self.idx = 0;
+                }
+                Err(e) => {
+                    panic!("Reading bytes should not panic. {:?}", e);
+                }
+            }
+        }
+
+        if self.idx >= self.buffer_size {
+            return None;
+        }
+
+        self.idx += 1;
+        Some(self.buffer[self.idx - 1])
     }
 }
