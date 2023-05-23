@@ -57,6 +57,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         // TODO: clean this up, it's super ugly as is
+
         // maybe abstract away read_record()?
 
         let metadata = self.iter.next();

@@ -1,23 +1,34 @@
-pub use bio_seq::prelude::dna;
-pub use bio_seq::prelude::{Dna, Seq as SeqImp};
+pub use crate::seq::dna;
+use std::fmt;
 
-use derive_more::{Display, From, Into};
+use bio::data_structures::bitenc::{BitEnc, BitEncIter};
+use derive_more::{From, Into};
 
-use std::hash::{Hash, Hasher};
+#[derive(Eq, PartialEq, From, Into, Debug, Hash)]
+pub struct Seq(BitEnc);
 
-#[derive(Eq, PartialEq, From, Into, Display, Debug)]
-pub struct Seq(SeqImp<Dna>);
+impl Seq {
+    pub fn new() -> Self {
+        Self(BitEnc::new(2))
+    }
 
-impl Hash for Seq {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let seq_slice = &self.0[..];
-        seq_slice.hash(state);
+    pub fn with_capacity(n: usize) -> Self {
+        Self(BitEnc::with_capacity(2, n))
+    }
+
+    pub fn push(&mut self, b: u8) {
+        self.0.push(dna::a_to_b(b))
     }
 }
 
-impl Seq {
-    pub fn new(s: &str) -> Self {
-        let v = SeqImp::<Dna>::try_from(s).unwrap();
-        Seq(v)
+impl fmt::Display for Seq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = self
+            .0
+            .iter()
+            .map(dna::b_to_a)
+            .collect::<Vec<&str>>()
+            .join("");
+        write!(f, "{}", s)
     }
 }

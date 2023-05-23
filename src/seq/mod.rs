@@ -1,21 +1,4 @@
-// TODO: use bit-packed seq obj
-// use bio_seq::prelude::*;
-//#[derive(PartialEq, Eq, Debug)]
-// struct DNASeq(Seq<Dna>);
-
-// impl Hash for DNASeq {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.bv.hash(state);
-//     }
-// }
-// use std::hash::{Hash, Hasher};
-
-// #[derive(Hash, Eq, PartialEq, Debug)]
-// pub struct Seq(String);
-
-// #[derive(Hash, Eq, PartialEq, Debug)]
-// pub struct Qual(String);
-
+pub mod dna;
 pub mod id;
 pub mod seq;
 
