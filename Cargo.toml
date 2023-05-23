@@ -3,12 +3,16 @@ name = "proj"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+debug = true
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bio = "1.1.0"
 clap = { version = "4.2.7", features = ["derive"] }
 derive_more = "0.99.17"
+lazy_static = "1.4.0"
 xxhash-rust = {version = "0.8.6", features = ["xxh3", "const_xxh3"] }
 
 [profile.release-with-debug]

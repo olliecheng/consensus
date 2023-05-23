@@ -9,6 +9,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 struct Args {
+    #[arg(default_value_t = String::from("tests/samples/small.fastq"))]
     file: String,
 }
 

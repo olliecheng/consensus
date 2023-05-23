@@ -2,7 +2,7 @@ use crate::pairings::PairingCollection;
 use crate::seq::{FastQRead, Identifier, Seq};
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 
 // TODO: refactor Reader and FastQReader into separate files, possibly reader/fastq.rs
@@ -21,8 +21,6 @@ pub struct FastQReader {
     filename: String,
     options: Options,
 }
-
-type BaseIterator = Box<dyn Iterator<Item = Result<String, std::io::Error>>>;
 
 struct FastQReadIterator {
     reader: BufReader<File>,
@@ -128,14 +126,21 @@ impl Iterator for FastQReadIterator {
 
         // line 2: fastq sequence
         let mut seq = Seq::new();
-        for b in self.reader.by_ref().bytes() {
-            let b = b.expect("Seq: Reading a byte should never fail");
-            if b == b'\n' {
-                break;
-            }
+        seq.add_iter(
+            self.reader
+                .by_ref()
+                .bytes()
+                .map(|b| b.expect("Seq: reading a byte should never fail"))
+                .take_while(|b| *b != b'\n'),
+        );
+        // for b in self.reader.by_ref().bytes() {
+        //     let b = b.expect("Seq: Reading a byte should never fail");
+        //     if b == b'\n' {
+        //         break;
+        //     }
 
-            seq.push(b);
-        }
+        //     seq.push(b);
+        // }
         // line 3: expect a +
         self.read_next_byte_and_assert(&mut temp_c, b'+');
         // read bytes until newline
