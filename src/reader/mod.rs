@@ -2,7 +2,7 @@ use crate::pairings::PairingCollection;
 use crate::seq::{FastQRead, Identifier, Seq};
 use std::fmt;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Bytes, Read};
 use std::path::Path;
 
 // TODO: refactor Reader and FastQReader into separate files, possibly reader/fastq.rs
@@ -23,7 +23,7 @@ pub struct FastQReader {
 }
 
 struct FastQReadIterator {
-    reader: BufReader<File>,
+    bytes: Bytes<BufReader<File>>,
     options: Options,
     lines: u64,
     eof: bool,
@@ -32,7 +32,7 @@ struct FastQReadIterator {
 impl FastQReadIterator {
     fn new(reader: BufReader<File>, options: Options) -> Self {
         Self {
-            reader,
+            bytes: reader.bytes(),
             options,
             lines: 0,
             eof: false,
@@ -41,32 +41,65 @@ impl FastQReadIterator {
 }
 
 impl FastQReadIterator {
-    fn read_next_byte(&mut self, v: &mut [u8]) -> Result<(), std::io::Error> {
-        self.reader.read_exact(v)
+    fn read_next_byte(&mut self) -> Option<u8> {
+        match self.bytes.next() {
+            Some(x) => Some(x.expect("Reading a byte should never fail")),
+            None => None,
+        }
     }
 
-    fn read_next_byte_and_assert(&mut self, v: &mut [u8], b: u8) {
-        self.read_next_byte(v).expect(&format!(
-            "Reading a single byte should never fail. {}",
-            self.lines,
-        ));
-
-        assert!(
-            v == [b],
-            "{} Single character error: {} != {}",
-            self.lines,
-            v[0],
-            b
-        );
+    fn read_next_byte_without_eof(&mut self) -> u8 {
+        self.read_next_byte()
+            .expect("Found end of file, not allowed")
     }
 
-    fn read_bytes(&mut self, n: usize) -> Vec<u8> {
-        let mut v = vec![0u8; n];
-        self.reader.read_exact(&mut v).expect(&format!(
-            "Reading a fixed size chunk of size {} should never fail. {}",
-            n, self.lines
-        ));
-        v
+    fn apply_n_bytes<F>(&mut self, n: usize, mut f: F)
+    where
+        F: FnMut(u8) -> (),
+    {
+        for _ in 0..n {
+            let v = self.read_next_byte_without_eof();
+            f(v)
+        }
+    }
+
+    fn apply_until_byte_or_eof<F>(&mut self, stop_byte: u8, mut f: F) -> Option<()>
+    where
+        F: FnMut(u8) -> (),
+    {
+        loop {
+            let v = self.read_next_byte()?;
+            if v == stop_byte {
+                break;
+            }
+            f(v)
+        }
+        Some(())
+    }
+
+    fn apply_until_byte<F>(&mut self, stop_byte: u8, mut f: F)
+    where
+        F: FnMut(u8) -> (),
+    {
+        if let None = self.apply_until_byte_or_eof(stop_byte, f) {
+            panic!("Did not expect EOF");
+        };
+    }
+
+    fn seek_until_byte(&mut self, stop_byte: u8) {
+        self.apply_until_byte(stop_byte, |x| ())
+    }
+
+    fn read_until_byte(&mut self, stop_byte: u8) -> Vec<u8> {
+        let mut result = Vec::new();
+        loop {
+            let v = self.read_next_byte_without_eof();
+            if v == stop_byte {
+                break;
+            }
+            result.push(v);
+        }
+        result
     }
 }
 
@@ -75,7 +108,6 @@ impl Iterator for FastQReadIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         // TODO: clean this up, it's super ugly as is
-        let mut temp_c = [0];
 
         if self.eof {
             return None;
@@ -83,81 +115,52 @@ impl Iterator for FastQReadIterator {
 
         // first line: metadata
         // first character: @
-        match self.read_next_byte(&mut temp_c) {
-            Err(_) => {
-                // end of file was reached, we should return None
+        match self.read_next_byte() {
+            Some(b'\n') | None => {
+                // end of file
                 self.eof = true;
                 return None;
             }
-            _ => (),
-        }
-        match temp_c {
-            [b'\n'] => {
-                // end of file was reached
-                self.eof = true;
-                return None;
-            }
-            [b'@'] => (),
-            _ => panic!("{}: Expected @ or \\n, got {}", self.lines, temp_c[0]),
+            Some(b'@') => (),
+            _ => panic!("Wrong character: not @ starting line {}", self.lines),
         }
 
         // next: barcode
         let mut bc = Seq::with_capacity(self.options.bc);
-        bc.add_iter(self.read_bytes(self.options.bc).into_iter());
+        self.apply_n_bytes(self.options.bc, |x| bc.push(x));
 
-        // next character: _
-        self.read_next_byte_and_assert(&mut temp_c, b'_');
+        // next character must be _
+        assert!(
+            self.read_next_byte_without_eof() == b'_',
+            "{} Next character after bc must be _",
+            self.lines
+        );
 
         // next: UMI
         let mut umi = Seq::with_capacity(self.options.umi);
-        umi.add_iter(self.read_bytes(self.options.umi).into_iter());
+        self.apply_n_bytes(self.options.umi, |x| umi.push(x));
 
         // read the rest into metadata
         let mut metadata = String::new();
-        match self.reader.read_line(&mut metadata) {
-            Ok(0) => panic!(
-                "Metadata: File should not end abruptly, line {}",
-                self.lines
-            ),
-            Err(_) => panic!("Metadata: Reading should not fail, line {}", self.lines),
-            _ => {}
-        };
-        let metadata = metadata.trim_end().to_string();
+        self.apply_until_byte(b'\n', |x| metadata.push(x as char));
 
         // line 2: fastq sequence
         let mut seq = Seq::new();
-        seq.add_iter(
-            self.reader
-                .by_ref()
-                .bytes()
-                .map(|b| b.expect("Seq: reading a byte should never fail"))
-                .take_while(|b| *b != b'\n'),
-        );
-        // for b in self.reader.by_ref().bytes() {
-        //     let b = b.expect("Seq: Reading a byte should never fail");
-        //     if b == b'\n' {
-        //         break;
-        //     }
+        self.apply_until_byte(b'\n', |x| seq.push(x));
 
-        //     seq.push(b);
-        // }
         // line 3: expect a +
-        self.read_next_byte_and_assert(&mut temp_c, b'+');
-        // read bytes until newline
-        for b in self.reader.by_ref().bytes() {
-            if b.expect("+: Reading a byte should never fail") == b'\n' {
-                break;
-            }
-        }
+        assert!(
+            self.read_next_byte_without_eof() == b'+',
+            "3rd line of each block should start with a + ({})",
+            self.lines
+        );
+        self.seek_until_byte(b'\n');
 
         // line 4: read quality scores - for now, add to a string
         let mut qual = String::new();
-        match self.reader.read_line(&mut qual) {
-            Ok(0) => self.eof = true,
-            Err(_) => panic!("Qual: Reading should not fail, line {}", self.lines),
-            _ => {}
-        };
-        let qual = qual.trim_end().to_string();
+        if let None = self.apply_until_byte_or_eof(b'\n', |x| qual.push(x as char)) {
+            self.eof = true;
+        }
 
         self.lines += 4;
 
