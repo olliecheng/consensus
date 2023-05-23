@@ -61,18 +61,14 @@ impl FastQReadIterator {
         }
     }
 
-    fn apply_until_byte_or_eof<F>(&mut self, stop_byte: u8, mut f: F) -> Option<()>
+    fn apply_until_byte_or_eof<F>(&mut self, stop_byte: u8, f: F) -> Option<()>
     where
         F: FnMut(u8) -> (),
     {
-        loop {
-            let v = self.read_next_byte()?;
-            if v == stop_byte {
-                break;
-            }
-            f(v)
+        match self.bytes.apply_until_byte(stop_byte, f) {
+            Some(_) => Some(()),
+            None => None,
         }
-        Some(())
     }
 
     fn apply_until_byte<F>(&mut self, stop_byte: u8, f: F)
@@ -254,17 +250,17 @@ impl ByteReader {
 
                 match memchr::memchr(delim, available) {
                     Some(i) => {
-                        for i in 0..i {
-                            f(available[i]);
-                        }
+                        // for i in 0..i {
+                        //     f(available[i]);
+                        // }
                         (true, i + 1)
                     }
                     None => {
                         let length = available.len();
-                        for i in 0..length {
-                            f(available[i])
-                        }
-                        (false, available.len())
+                        // for i in 0..length {
+                        //     f(available[i])
+                        // }
+                        (false, length)
                     }
                 }
             };
