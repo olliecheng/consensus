@@ -1,8 +1,9 @@
 use crate::pairings::PairingCollection;
 use crate::seq::{FastQRead, Identifier, Seq};
+use memchr::memchr;
 use std::fmt;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Bytes, Read};
+use std::io::{BufRead, BufReader, Bytes, ErrorKind, Read};
 use std::path::Path;
 
 // TODO: refactor Reader and FastQReader into separate files, possibly reader/fastq.rs
@@ -74,28 +75,24 @@ impl FastQReadIterator {
         Some(())
     }
 
-    fn apply_until_byte<F>(&mut self, stop_byte: u8, mut f: F)
+    fn apply_until_byte<F>(&mut self, stop_byte: u8, f: F)
     where
         F: FnMut(u8) -> (),
     {
-        if let None = self.apply_until_byte_or_eof(stop_byte, f) {
-            panic!("Did not expect EOF");
-        };
+        let result = self.bytes.apply_until_byte(stop_byte, f);
+        assert!(result != None, "Did not expect EOF");
     }
 
     fn seek_until_byte(&mut self, stop_byte: u8) {
-        self.apply_until_byte(stop_byte, |x| ())
+        self.bytes.apply_until_byte(stop_byte, |_| ());
     }
 
     fn read_until_byte(&mut self, stop_byte: u8) -> Vec<u8> {
         let mut result = Vec::new();
-        loop {
-            let v = self.read_next_byte_without_eof();
-            if v == stop_byte {
-                break;
-            }
-            result.push(v);
-        }
+        self.bytes
+            .reader
+            .read_until(stop_byte, &mut result)
+            .expect("Reading should not fail");
         result
     }
 }
@@ -213,7 +210,7 @@ impl fmt::Display for MalformedFileError {
 const BYTE_READER_BUFFER_SIZE: usize = 512;
 
 struct ByteReader {
-    reader: BufReader<std::fs::File>,
+    pub reader: BufReader<std::fs::File>,
     buffer: [u8; BYTE_READER_BUFFER_SIZE],
     idx: usize,
     buffer_size: usize,
@@ -230,27 +227,56 @@ impl ByteReader {
     }
 
     fn next_byte(&mut self) -> Option<u8> {
-        // do we need to refill the buffer?
-        if self.idx >= BYTE_READER_BUFFER_SIZE {
-            match self.reader.read(&mut self.buffer) {
-                Ok(0) => {
-                    return None;
+        let mut buf = [0];
+
+        match self.reader.read_exact(&mut buf) {
+            Err(e) => match e.kind() {
+                ErrorKind::UnexpectedEof => None,
+                _ => panic!("Reading a byte should not have error {}", e),
+            },
+            _ => Some(buf[0]),
+        }
+    }
+
+    // modified from https://doc.rust-lang.org/src/std/io/mod.rs.html#1910-1936
+    // Returns None if EOF has been reached
+    fn apply_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
+    where
+        F: FnMut(u8) -> (),
+    {
+        let mut read = 0;
+        loop {
+            let (done, used) = {
+                let available = match self.reader.fill_buf() {
+                    Ok(n) => n,
+                    Err(_) => panic!("Byte not readable"),
+                };
+
+                match memchr::memchr(delim, available) {
+                    Some(i) => {
+                        for i in 0..i {
+                            f(available[i]);
+                        }
+                        (true, i + 1)
+                    }
+                    None => {
+                        let length = available.len();
+                        for i in 0..length {
+                            f(available[i])
+                        }
+                        (false, available.len())
+                    }
                 }
-                Ok(n) => {
-                    self.buffer_size = n;
-                    self.idx = 0;
-                }
-                Err(e) => {
-                    panic!("Reading bytes should not panic. {:?}", e);
-                }
+            };
+
+            self.reader.consume(used);
+            read += used;
+
+            if done {
+                return Some(read);
+            } else if used == 0 {
+                return None;
             }
         }
-
-        if self.idx >= self.buffer_size {
-            return None;
-        }
-
-        self.idx += 1;
-        Some(self.buffer[self.idx - 1])
     }
 }

@@ -12,6 +12,7 @@ debug = true
 bio = "1.1.0"
 clap = { version = "4.2.7", features = ["derive"] }
 lazy_static = "1.4.0"
+memchr = "2.5.0"
 xxhash-rust = {version = "0.8.6", features = ["xxh3", "const_xxh3"] }
 
 [profile.release-with-debug]
