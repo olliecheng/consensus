@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 
 lazy_static! {
     static ref BYTE_LOOKUP: [u8; 256] = {
-        let mut l = [0; 256];
+        let mut l = [0b11111111; 256];
 
         l[b'A' as usize] = 0b00;
         l[b'a' as usize] = 0b00;
