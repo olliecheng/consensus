@@ -1,32 +1,44 @@
-pub enum Dna {
-    A = 0b00,
-    C = 0b01,
-    G = 0b10,
-    T = 0b11,
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref BYTE_LOOKUP: [u8; 256] = {
+        let mut l = [0; 256];
+
+        l[b'A' as usize] = 0b00;
+        l[b'a' as usize] = 0b00;
+        l[b'C' as usize] = 0b01;
+        l[b'c' as usize] = 0b01;
+        l[b'G' as usize] = 0b10;
+        l[b'g' as usize] = 0b10;
+        l[b'T' as usize] = 0b11;
+        l[b't' as usize] = 0b11;
+
+        l
+    };
+
+    static ref ASCII_LOOKUP: [&'static str; 4] = {
+        let mut l = ["A"; 4];
+
+        // Do not need:
+        // l[0b00 as usize] = 'A';
+        l[0b01 as usize] = "C";
+        l[0b10 as usize] = "G";
+        l[0b11 as usize] = "T";
+
+        l
+    };
 }
 
+#[inline(always)]
 pub fn a_to_b(s: u8) -> u8 {
-    match s {
-        b'A' | b'a' => 0b00,
-        b'C' | b'c' => 0b01,
-        b'G' | b'g' => 0b10,
-        b'T' | b't' => 0b11,
-        _ => panic!(
-            "ASCII character {} not recognised as a valid DNA sequence",
-            s
-        ),
-    }
+    BYTE_LOOKUP[s as usize]
 }
 
+#[inline(always)]
 pub fn b_to_a(b: u8) -> &'static str {
-    match b {
-        0b00 => "A",
-        0b01 => "C",
-        0b10 => "G",
-        0b11 => "T",
-        _ => panic!(
-            "Byte {} not recognised as valid encoding for a DNA sequence",
-            b
-        ),
-    }
+    assert!(
+        b <= 0b11,
+        "Byte must be 2-bits to represent a valid alphabet"
+    );
+    ASCII_LOOKUP[b as usize]
 }
