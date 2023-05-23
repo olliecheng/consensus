@@ -19,6 +19,10 @@ impl Seq {
     pub fn push(&mut self, b: u8) {
         self.0.push(dna::a_to_b(b))
     }
+
+    pub fn add_iter(&mut self, i: impl Iterator<Item = u8>) {
+        i.map(dna::a_to_b).for_each(|x| self.0.push(x));
+    }
 }
 
 impl fmt::Display for Seq {

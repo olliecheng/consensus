@@ -8,7 +8,7 @@ pub use self::seq::Seq;
 pub type Qual = String;
 
 #[derive(Debug)]
-pub struct ReadWithQual {
+pub struct FastQRead {
     pub id: id::Identifier,
     pub metadata: String,
     pub seq: Seq,
