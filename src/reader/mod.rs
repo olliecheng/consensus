@@ -250,16 +250,16 @@ impl ByteReader {
 
                 match memchr::memchr(delim, available) {
                     Some(i) => {
-                        // for i in 0..i {
-                        //     f(available[i]);
-                        // }
+                        for i in 0..i {
+                            f(available[i]);
+                        }
                         (true, i + 1)
                     }
                     None => {
                         let length = available.len();
-                        // for i in 0..length {
-                        //     f(available[i])
-                        // }
+                        for i in 0..length {
+                            f(available[i])
+                        }
                         (false, length)
                     }
                 }
