@@ -132,7 +132,20 @@ impl Iterator for FastQReadIterator {
 
         // read the rest into metadata
         let mut metadata = String::new();
-        self.apply_until_byte(b'\n', |x| metadata.push(x as char));
+        match self.bytes.reader.read_line(&mut metadata) {
+            Ok(0) => panic!("Did not expect early EOF"),
+            Ok(n) => {
+                let last_char = &metadata[n - 1..];
+                assert!(
+                    last_char == "\n",
+                    "Last character of metadata should be \n, got {}",
+                    last_char
+                );
+                // remove trailing \n
+                metadata.truncate(n - 1);
+            }
+            Err(_) => panic!("String reading metadata should never fail"),
+        };
 
         // line 2: fastq sequence
         let mut seq = Seq::new();
@@ -148,9 +161,20 @@ impl Iterator for FastQReadIterator {
 
         // line 4: read quality scores - for now, add to a string
         let mut qual = String::new();
-        if let None = self.apply_until_byte_or_eof(b'\n', |x| qual.push(x as char)) {
-            self.eof = true;
-        }
+        match self.bytes.reader.read_line(&mut qual) {
+            Ok(0) => panic!("Did not expect early EOF"),
+            Ok(n) => {
+                let last_char = &qual[n - 1..];
+                if last_char == "\n" {
+                    // remove trailing \n
+                    qual.truncate(n - 1);
+                } else {
+                    // end of file has been reached
+                    self.eof = true;
+                }
+            }
+            Err(_) => panic!("String reading quality should never fail"),
+        };
 
         self.lines += 4;
 
@@ -234,11 +258,9 @@ impl ByteReader {
         }
     }
 
-    // modified from https://doc.rust-lang.org/src/std/io/mod.rs.html#1910-1936
-    // Returns None if EOF has been reached
-    fn apply_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
+    fn apply_on_slice_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
     where
-        F: FnMut(u8) -> (),
+        F: FnMut(&[u8]) -> (),
     {
         let mut read = 0;
         loop {
@@ -250,16 +272,12 @@ impl ByteReader {
 
                 match memchr::memchr(delim, available) {
                     Some(i) => {
-                        for i in 0..i {
-                            f(available[i]);
-                        }
+                        f(&available[0..i]);
                         (true, i + 1)
                     }
                     None => {
                         let length = available.len();
-                        for i in 0..length {
-                            f(available[i])
-                        }
+                        f(&available[..]);
                         (false, length)
                     }
                 }
@@ -274,5 +292,14 @@ impl ByteReader {
                 return None;
             }
         }
+    }
+
+    // modified from https://doc.rust-lang.org/src/std/io/mod.rs.html#1910-1936
+    // Returns None if EOF has been reached
+    fn apply_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
+    where
+        F: FnMut(u8) -> (),
+    {
+        self.apply_on_slice_until_byte(delim, |x| x.iter().for_each(|v| f(*v)))
     }
 }
