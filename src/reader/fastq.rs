@@ -30,7 +30,7 @@ impl super::Reader<Record> for FastQReader {
         let file = File::open(std::path::Path::new(&self.filename)).expect("Could not read file");
         let reader = BufReader::new(file);
 
-        return Box::new(FastQReadIterator::new(reader, self.options));
+        Box::new(FastQReadIterator::new(reader, self.options))
     }
 }
 

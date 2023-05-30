@@ -86,10 +86,10 @@ impl ByteReader {
                 if last_char == "\n" {
                     // remove trailing \n
                     buf.truncate(n - 1);
-                    return (n, false);
+                    (n, false)
                 } else {
                     // end of file has been reached
-                    return (n, true);
+                    (n, true)
                 }
             }
             Err(_) => panic!("String reading quality should never fail"),
