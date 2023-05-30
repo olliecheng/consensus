@@ -8,9 +8,7 @@ pub struct Seq(BitEnc);
 
 impl Seq {
     pub fn new() -> Self {
-        // Self(BitEnc::new(2))
-
-        // Use a default size of 100 to represent a typical seq length
+        // Use a default size of 80 to represent a typical seq length
         Self(BitEnc::with_capacity(2, 80))
     }
 
