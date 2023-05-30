@@ -1,8 +1,9 @@
 use super::bytes;
 use crate::seq::{self, Record};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Bytes, ErrorKind, Read};
+use std::io::{BufReader, Read};
 
+#[allow(dead_code)]
 pub struct FastQReader {
     filename: String,
     options: crate::options::Options,
@@ -134,7 +135,6 @@ mod tests {
     use crate::reader::fastq;
     use crate::reader::Reader;
     use crate::seq::{Identifier, Seq};
-    use std::fs::File;
     use std::hint::black_box;
 
     fn read_file(file_path: String) -> Vec<fastq::Record> {

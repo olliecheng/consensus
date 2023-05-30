@@ -1,5 +1,4 @@
 pub mod from_reader;
-use crate::reader;
 use crate::seq::{Identifier, Seq};
 
 use std::collections::{HashMap, HashSet};

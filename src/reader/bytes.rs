@@ -1,17 +1,15 @@
-use memchr::memchr;
-use std::fs::File;
-use std::io::{BufRead, BufReader, ErrorKind, Read, Seek};
+use std::io::{BufRead, BufReader, ErrorKind, Read};
 
 pub type GenericBufReader = BufReader<Box<dyn Read>>;
 
 pub struct ByteReader {
     pub reader: GenericBufReader,
-    idx: usize,
 }
 
+#[allow(dead_code)]
 impl ByteReader {
     pub fn new(reader: GenericBufReader) -> Self {
-        Self { reader, idx: 0 }
+        Self { reader }
     }
 
     pub fn next_byte(&mut self) -> Option<u8> {
