@@ -131,21 +131,21 @@ impl Iterator for FastQReadIterator {
 
 #[cfg(test)]
 mod tests {
-    use crate::reader::fastq::Record;
+    use crate::reader::fastq;
     use crate::reader::Reader;
     use crate::seq::{Identifier, Seq};
     use std::fs::File;
     use std::hint::black_box;
 
-    fn read_file(file_path: String) -> Vec<Record> {
-        let mut r = crate::fastq::FastQReader::new(file_path);
+    fn read_file(file_path: String) -> Vec<fastq::Record> {
+        let mut r = fastq::FastQReader::new(file_path);
 
         r.read().collect()
     }
 
-    fn read_string(v: String) -> Vec<Record> {
+    fn read_string(v: String) -> Vec<fastq::Record> {
         let f = Box::new(std::io::Cursor::new(v));
-        let r = crate::fastq::FastQReader::read_from_reader(f);
+        let r = fastq::FastQReader::read_from_reader(f);
 
         r.collect()
     }
@@ -172,7 +172,7 @@ TTTGCTTAGCAATCTGCAGATCAAAATCTCCCTTTACCACTGGCATATTCAATAACTGGGCATTCTCTGCTTCCACAGCA
 +TCTGGCTCATTCTCCG_ACTGGTTGGTCT#726ab78a-d517-40c9-a0de-dbf406419dba_+1of2
 '982+***,HHKHGGJFJDBBBCHIM{FICA85651?DFEHLGIIJKLV[NIFEDDDDFGHCJG<;9F11112445>?@?FCF:6=.81../?>?==:28<<<AEDEGEEF:998578AAFDA@@GJGLMKJNGGIGFFD?A86666311.+,,,,,--31,.64-0///,,00-,-('(,*'''()=DDGHH{GGLILJNFEEGEGDFEGEFGDD<;2-,(&$%%'(((*,000,+*(*(%%%%*+,(**)(''&&&()-.59=@C>>>>=GB?0+.-+*))'&%$$%&(()&&%%&&$&(*,,-0*++++31122:>;BACCCJHEHJ{HHIIIIHLIGHHFGGIJEEDGF{KGINHNHIIIGIEDHKE@><<<@HLMIGEEEA80032(')))*.)(()++8;;761.-/110342221ACEXHIHEECACA959,**)'&&&))/487553351...,0++,@EMIJGGEDA?>@EGGMLMEEED@DIGB9223?";
         let test_record = read_string(rec.to_string());
-        let actual_record = Record {
+        let actual_record = fastq::Record {
             id: Identifier {
                 bc: Seq::from_string("TCTGGCTCATTCTCCG"),
                 umi: Seq::from_string("ACTGGTTGGTCT")
@@ -192,7 +192,7 @@ TTTGCTTAGCAATCTGCAGATCAAAATCTCCCTTTACCACTGGCATATTCAATAACTGGGCATTCTCTGCTTCCACAGCA
 +TCTGGCTCATTCTCCG_ACTGGTTGGTCT#726ab78a-d517-40c9-a0de-dbf406419dba_+1of2
 '982+***,HHKHGGJFJDBBBCHIM{FICA85651?DFEHLGIIJKLV[NIFEDDDDFGHCJG<;9F11112445>?@?FCF:6=.81../?>?==:28<<<AEDEGEEF:998578AAFDA@@GJGLMKJNGGIGFFD?A86666311.+,,,,,--31,.64-0///,,00-,-('(,*'''()=DDGHH{GGLILJNFEEGEGDFEGEFGDD<;2-,(&$%%'(((*,000,+*(*(%%%%*+,(**)(''&&&()-.59=@C>>>>=GB?0+.-+*))'&%$$%&(()&&%%&&$&(*,,-0*++++31122:>;BACCCJHEHJ{HHIIIIHLIGHHFGGIJEEDGF{KGINHNHIIIGIEDHKE@><<<@HLMIGEEEA80032(')))*.)(()++8;;761.-/110342221ACEXHIHEECACA959,**)'&&&))/487553351...,0++,@EMIJGGEDA?>@EGGMLMEEED@DIGB9223?\n";
         let test_record = read_string(rec.to_string());
-        let actual_record = Record {
+        let actual_record = fastq::Record {
             id: Identifier {
                 bc: Seq::from_string("TCTGGCTCATTCTCCG"),
                 umi: Seq::from_string("ACTGGTTGGTCT")

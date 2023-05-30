@@ -1,13 +1,6 @@
-#![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
-
-mod options;
-mod pairings;
-mod reader;
-mod seq;
-
 use clap::Parser;
-use pairings::PairingCollection;
-use reader::fastq;
+use proj::pairings::PairingCollection;
+use proj::reader::fastq;
 
 #[derive(Parser, Debug)]
 struct Args {
