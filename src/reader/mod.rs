@@ -53,7 +53,7 @@ impl FastQReadIterator {
 
     fn apply_n_bytes<F>(&mut self, n: usize, mut f: F)
     where
-        F: FnMut(u8) -> (),
+        F: FnMut(u8),
     {
         for _ in 0..n {
             let v = self.read_next_byte_without_eof();
@@ -63,7 +63,7 @@ impl FastQReadIterator {
 
     fn apply_until_byte_or_eof<F>(&mut self, stop_byte: u8, f: F) -> Option<()>
     where
-        F: FnMut(u8) -> (),
+        F: FnMut(u8),
     {
         match self.bytes.apply_until_byte(stop_byte, f) {
             Some(_) => Some(()),
@@ -73,10 +73,10 @@ impl FastQReadIterator {
 
     fn apply_until_byte<F>(&mut self, stop_byte: u8, f: F)
     where
-        F: FnMut(u8) -> (),
+        F: FnMut(u8),
     {
         let result = self.bytes.apply_until_byte(stop_byte, f);
-        assert!(result != None, "Did not expect EOF");
+        assert!(result.is_some(), "Did not expect EOF");
     }
 
     fn seek_until_byte(&mut self, stop_byte: u8) {
@@ -260,7 +260,7 @@ impl ByteReader {
 
     fn apply_on_slice_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
     where
-        F: FnMut(&[u8]) -> (),
+        F: FnMut(&[u8]),
     {
         let mut read = 0;
         loop {
@@ -277,7 +277,7 @@ impl ByteReader {
                     }
                     None => {
                         let length = available.len();
-                        f(&available[..]);
+                        f(available);
                         (false, length)
                     }
                 }
@@ -298,7 +298,7 @@ impl ByteReader {
     // Returns None if EOF has been reached
     fn apply_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
     where
-        F: FnMut(u8) -> (),
+        F: FnMut(u8),
     {
         self.apply_on_slice_until_byte(delim, |x| x.iter().for_each(|v| f(*v)))
     }

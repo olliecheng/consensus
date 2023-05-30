@@ -42,7 +42,7 @@ impl PairingCollection {
 
     // https://github.com/rust-lang/rfcs/blob/master/text/1522-conservative-impl-trait.md
     // impl trait - rust 1.26
-    pub fn duplicates<'a>(&'a mut self) -> impl Iterator<Item = (&'a Identifier, &'a Vec<Seq>)> {
+    pub fn duplicates(&mut self) -> impl Iterator<Item = (&Identifier, &Vec<Seq>)> {
         self.duplicates_set
             .iter()
             .map(|x| self.pairings.get_key_value(x).unwrap())

@@ -33,7 +33,7 @@ impl fmt::Display for Seq {
         let s = self
             .0
             .iter()
-            .map(|x| dna::b_to_a(x))
+            .map(dna::b_to_a)
             .collect::<Vec<&str>>()
             .join("");
         write!(f, "{}", s)

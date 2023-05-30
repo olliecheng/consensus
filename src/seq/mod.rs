@@ -1,9 +1,9 @@
 pub mod dna;
 pub mod id;
-pub mod seq;
+pub mod sequence;
 
 pub use self::id::Identifier;
-pub use self::seq::Seq;
+pub use self::sequence::Seq;
 
 pub type Qual = String;
 

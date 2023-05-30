@@ -24,6 +24,7 @@ fn small_file_output() -> TestResult {
         .output()
         .expect("Failed to run process");
     let stdout = String::from_utf8(output.stdout).unwrap();
+
     // We don't care about the order of the output, so sort first
     let mut stdout: Vec<&str> = stdout.lines().collect();
     stdout.sort_unstable();

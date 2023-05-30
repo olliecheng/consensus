@@ -21,9 +21,9 @@ lazy_static! {
 
         // Do not need:
         // l[0b00 as usize] = 'A';
-        l[0b01 as usize] = "C";
-        l[0b10 as usize] = "G";
-        l[0b11 as usize] = "T";
+        l[0b01] = "C";
+        l[0b10] = "G";
+        l[0b11] = "T";
 
         l
     };
