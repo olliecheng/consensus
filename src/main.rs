@@ -1,11 +1,13 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
 
+mod options;
 mod pairings;
 mod reader;
 mod seq;
 
-use crate::reader::{FastQReader, Reader};
 use clap::Parser;
+use pairings::PairingCollection;
+use reader::fastq;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -18,8 +20,9 @@ fn main() {
 
     let file_path = args.file;
 
-    let mut r = FastQReader::new(file_path);
-    let mut seqs = r.read();
+    let mut r = fastq::FastQReader::new(file_path.to_string());
+
+    let mut seqs = PairingCollection::from_reader_fastq(&mut r);
     for x in seqs.duplicates() {
         println!("BC:{},UMI:{}", x.0.bc, x.0.umi);
     }
