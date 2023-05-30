@@ -3,9 +3,8 @@ use std::fmt;
 
 use bio::data_structures::bitenc::BitEnc;
 
-#[derive(Eq, PartialEq, Debug, Hash)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct Seq(BitEnc);
-// pub struct Seq(Vec<u8>);
 
 impl Seq {
     pub fn new() -> Self {
@@ -24,7 +23,14 @@ impl Seq {
     }
 
     pub fn add_iter(&mut self, i: impl Iterator<Item = u8>) {
-        i.map(dna::a_to_b).for_each(|x| self.push(x));
+        i.map(dna::a_to_b).for_each(|x| self.0.push(x));
+    }
+
+    pub fn from_string(s: String) -> Self {
+        let length = s.len();
+        let mut seq = Self::with_capacity(length);
+        seq.add_iter(s.bytes());
+        seq
     }
 }
 

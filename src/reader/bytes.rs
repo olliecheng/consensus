@@ -1,14 +1,16 @@
 use memchr::memchr;
 use std::fs::File;
-use std::io::{BufRead, BufReader, ErrorKind, Read};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Seek};
+
+pub type GenericBufReader = BufReader<Box<dyn Read>>;
 
 pub struct ByteReader {
-    pub reader: BufReader<File>,
+    pub reader: GenericBufReader,
     idx: usize,
 }
 
 impl ByteReader {
-    pub fn new(reader: BufReader<File>) -> Self {
+    pub fn new(reader: GenericBufReader) -> Self {
         Self { reader, idx: 0 }
     }
 

@@ -7,9 +7,9 @@ pub use self::sequence::Seq;
 
 pub type Qual = String;
 
-#[derive(Debug)]
-pub struct FastQRead {
-    pub id: id::Identifier,
+#[derive(Debug, PartialEq)]
+pub struct Record {
+    pub id: Identifier,
     pub metadata: String,
     pub seq: Seq,
     pub qual: Qual,

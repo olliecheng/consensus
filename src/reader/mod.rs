@@ -1,16 +1,10 @@
 mod bytes;
 pub mod fastq;
-
-use crate::options::Options;
-
-use crate::pairings::PairingCollection;
-use crate::seq::{FastQRead, Identifier, Seq};
-use memchr::memchr;
-use std::fmt;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Bytes, ErrorKind, Read};
-use std::path::Path;
+use std::io::Read;
 
 pub trait Reader<T> {
     fn read(&mut self) -> Box<dyn Iterator<Item = T>>;
+
+    fn read_file(filename: &str) -> Box<dyn Iterator<Item = T>>;
+    fn read_from_reader(reader: Box<dyn Read>) -> Box<dyn Iterator<Item = T>>;
 }
