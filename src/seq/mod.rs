@@ -1,3 +1,4 @@
+pub mod bitenc;
 pub mod dna;
 pub mod id;
 pub mod sequence;

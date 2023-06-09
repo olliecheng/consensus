@@ -1,7 +1,7 @@
 pub use crate::seq::dna;
 use std::fmt;
 
-use bio::data_structures::bitenc::BitEnc;
+use super::bitenc::BitEnc;
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct Seq(BitEnc);
