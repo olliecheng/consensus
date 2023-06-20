@@ -64,12 +64,12 @@ impl ByteReader {
         self.reader.read_until(byte, buf)
     }
 
-    pub fn read_line_trim_newline(&mut self, buf: &mut String) -> (usize, bool) {
-        match self.read_line(buf) {
+    pub fn read_line_trim_newline(&mut self, buf: &mut Vec<u8>) -> (usize, bool) {
+        match self.reader.read_until(b'\n', buf) {
             Ok(0) => panic!("Did not expect early EOF"),
             Ok(n) => {
-                let last_char = &buf[n - 1..];
-                if last_char == "\n" {
+                let last_char = buf[n - 1];
+                if last_char == b'\n' {
                     // remove trailing \n
                     buf.truncate(n - 1);
                     (n, false)
