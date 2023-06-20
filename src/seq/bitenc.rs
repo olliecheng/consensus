@@ -161,9 +161,9 @@ impl BitEnc {
 
     // WARNING: it is up to the user to ensure that there is no unwritten block.
     // WARNING: blocks are stored from right to left
-    pub fn push_block(&mut self, block: u32) {
+    pub fn push_block_with_n_elems(&mut self, block: u32, n: usize) {
         self.storage.push(block);
-        self.len += self.elems_per_block;
+        self.len += n;
     }
 
     /// Append the given `value` to the encoding `n` times.
@@ -521,7 +521,7 @@ mod tests {
             bitenc.push(1);
         }
 
-        bitenc.push_block(0b11011011000110110001101000011011);
+        bitenc.push_block_with_n_elems(0b11011011000110110001101000011011, 16);
 
         bitenc.push(2);
 

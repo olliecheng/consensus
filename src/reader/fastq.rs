@@ -101,14 +101,35 @@ impl Iterator for FastQReadIterator {
 
         // line 2: fastq sequence
         let mut seq = seq::Seq::new();
-        self.bytes.apply_until_byte(b'\n', |x| seq.push(x));
+        self.bytes.apply_on_slice_until_byte(b'\n', |chunk, size| {
+            println!("chunk {:?}, size {}", chunk, size);
+            if size == 16 {
+                // https://users.rust-lang.org/t/unsafe-conversion-from-slice-to-array-reference/88910/2
+                unsafe { seq.push_u32_chunk_of_n(&*chunk.as_ptr().cast(), 16) }
+            } else {
+                let mut new_arr = [0u8; 16];
+                chunk.iter().enumerate().for_each(|(i, x)| unsafe {
+                    *new_arr.get_unchecked_mut(i) = *x;
+                });
+                seq.push_u32_chunk_of_n(&new_arr, size)
+            }
+        });
 
         // line 3: expect a +
-        assert!(
-            self.bytes.next_byte().expect("Expected + not EOF") == b'+',
-            "3rd line of each block should start with a + ({})",
-            self.lines
-        );
+        let x = self.bytes.next_byte().expect("Expected + not EOF");
+        {
+            assert!(
+                x == b'+',
+                "3rd line of each block should start with a +, not {} ({})",
+                x as char,
+                self.lines
+            )
+        }
+        // assert!(
+        //     self.bytes.next_byte().expect("Expected + not EOF") == b'+',
+        //     "3rd line of each block should start with a + ({})",
+        //     self.lines
+        // );
         self.bytes.seek_until_byte(b'\n');
 
         // line 4: read quality scores - for now, add to a string
@@ -135,6 +156,7 @@ mod tests {
     use crate::reader::fastq;
     use crate::reader::Reader;
     use crate::seq::{Identifier, Seq};
+    use pretty_assertions::assert_eq;
     use std::hint::black_box;
 
     fn read_file(file_path: String) -> Vec<fastq::Record> {
@@ -172,6 +194,7 @@ TTTGCTTAGCAATCTGCAGATCAAAATCTCCCTTTACCACTGGCATATTCAATAACTGGGCATTCTCTGCTTCCACAGCA
 +TCTGGCTCATTCTCCG_ACTGGTTGGTCT#726ab78a-d517-40c9-a0de-dbf406419dba_+1of2
 '982+***,HHKHGGJFJDBBBCHIM{FICA85651?DFEHLGIIJKLV[NIFEDDDDFGHCJG<;9F11112445>?@?FCF:6=.81../?>?==:28<<<AEDEGEEF:998578AAFDA@@GJGLMKJNGGIGFFD?A86666311.+,,,,,--31,.64-0///,,00-,-('(,*'''()=DDGHH{GGLILJNFEEGEGDFEGEFGDD<;2-,(&$%%'(((*,000,+*(*(%%%%*+,(**)(''&&&()-.59=@C>>>>=GB?0+.-+*))'&%$$%&(()&&%%&&$&(*,,-0*++++31122:>;BACCCJHEHJ{HHIIIIHLIGHHFGGIJEEDGF{KGINHNHIIIGIEDHKE@><<<@HLMIGEEEA80032(')))*.)(()++8;;761.-/110342221ACEXHIHEECACA959,**)'&&&))/487553351...,0++,@EMIJGGEDA?>@EGGMLMEEED@DIGB9223?";
         let test_record = read_string(rec.to_string());
+
         let actual_record = fastq::Record {
             id: Identifier {
                 bc: Seq::from_string("TCTGGCTCATTCTCCG"),
@@ -181,6 +204,7 @@ TTTGCTTAGCAATCTGCAGATCAAAATCTCCCTTTACCACTGGCATATTCAATAACTGGGCATTCTCTGCTTCCACAGCA
             seq: Seq::from_string("TTTGCTTAGCAATCTGCAGATCAAAATCTCCCTTTACCACTGGCATATTCAATAACTGGGCATTCTCTGCTTCCACAGCAGGTAAACTTCTGTCTTTTATTTGAGTGACCTCTTCAAGTTTCATAATCTCACTGGTCAAGCTAGAAATTTTAGCATCCAAATTTTGCTTTGTCCACAGCCTTGCTGGTTAGGCTGTGAAGACTCTCCTCTGCCCATTTTATATAACTTCATGCTTAAATTATTTCTTTGAGTGGATTAACTGATGTTGAGCACAAATGTATGCCAACCCAGTTCTATTTAGCCATCTCTAGTCGTCTCTCCTCAAGGATTTCTTGATTATCACAAATAGATGGTGTCTGTATATCTAAAAGTTGAAAATTGTCTTCCATTTAGAAAAATCTCAACTACTTCATGTATACCCTGAAAGAACTGTTTTTTGGTATACAAAAAAGTTAATGCTGCTGTGCTTTGCTCTTCCTGACTTAGGTATTTTTCAAGGAAAATTGCGATAAAAATACCAGTGGATTTGTCCCTTGACCTAAATTAGAATGTCTGAAGAACATCATCAATTGTGTAACTTCATCAGTAAAAGCCTGAAGTTCATTACTGATCTTAGTGATCATTGCATTTAGAATTCCTTGACTCTGCTACAGCTTTAGTGGCTTCTTCTTTCTTCGCATTTAACCTCAGAATTTTGTGGCTAGTTACTGAAGCCATCAATTGACATTTCTACATTCGCTGAATTTTTAGGTTCTTTAATTTCAGTAGAGTTTGAACCTCATCCTCTAATTTCTCCAGCTCTTTATCATCCAGTCTAGGTGTCTTCAAATCAGAAGTTTTACGCGTTCGAGCTTCATCCAATGCCGCCCCTTTCTAGAATAGGCTTGCCTGAATTTTTTTCTAGAAATTACTAAAGGCTTCCAATTCTCTTTTCAGACAACACGTTCTGTTCATTAGTTCCACAAAACCACTGCAGAAACGATTCATCTTCAACGCCCTCAAACAA"),
             qual: "'982+***,HHKHGGJFJDBBBCHIM{FICA85651?DFEHLGIIJKLV[NIFEDDDDFGHCJG<;9F11112445>?@?FCF:6=.81../?>?==:28<<<AEDEGEEF:998578AAFDA@@GJGLMKJNGGIGFFD?A86666311.+,,,,,--31,.64-0///,,00-,-('(,*'''()=DDGHH{GGLILJNFEEGEGDFEGEFGDD<;2-,(&$%%'(((*,000,+*(*(%%%%*+,(**)(''&&&()-.59=@C>>>>=GB?0+.-+*))'&%$$%&(()&&%%&&$&(*,,-0*++++31122:>;BACCCJHEHJ{HHIIIIHLIGHHFGGIJEEDGF{KGINHNHIIIGIEDHKE@><<<@HLMIGEEEA80032(')))*.)(()++8;;761.-/110342221ACEXHIHEECACA959,**)'&&&))/487553351...,0++,@EMIJGGEDA?>@EGGMLMEEED@DIGB9223?".to_string()
         };
+
         assert!(test_record.len() == 1);
         assert_eq!(test_record[0], actual_record);
     }

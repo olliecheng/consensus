@@ -24,6 +24,10 @@ impl Seq {
         i.map(dna::dna_to_u8).for_each(|x| self.0.push(x));
     }
 
+    pub fn push_u32_chunk_of_n<'a>(&mut self, chunk: &'a [u8; 16], n: usize) {
+        self.0.push_block_with_n_elems(dna::dna_to_u32(chunk), n);
+    }
+
     pub fn from_string(s: &str) -> Self {
         let length = s.len();
         let mut seq = Self::with_capacity(length);

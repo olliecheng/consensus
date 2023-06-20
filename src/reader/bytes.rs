@@ -37,13 +37,34 @@ impl ByteReader {
 
                 match memchr::memchr(delim, available) {
                     Some(i) => {
-                        f(&available[0..i], i);
+                        let length = i;
+
+                        let chunks: usize = length / 16;
+                        let remainder = length - chunks * 16;
+
+                        for idx in 0..chunks {
+                            let start_idx = idx * 16;
+                            f(&available[start_idx..start_idx + 16], 16);
+                        }
+
+                        if remainder != 0 {
+                            f(&available[chunks * 16..i], remainder);
+                        }
+
                         (true, i + 1)
+                        // f(&available[0..i], i);
+                        // (true, i + 1)
                     }
                     None => {
                         let length = available.len();
-                        f(available, length);
-                        (false, length)
+                        let chunks: usize = length / 16;
+
+                        for i in 0..chunks {
+                            let start_idx = i * 16;
+                            f(&available[start_idx..start_idx + 16], 16);
+                        }
+
+                        (false, chunks * 16)
                     }
                 }
             };
