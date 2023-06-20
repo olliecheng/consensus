@@ -17,11 +17,11 @@ impl Seq {
     }
 
     pub fn push(&mut self, b: u8) {
-        self.0.push(dna::a_to_b(b))
+        self.0.push(dna::dna_to_u8(b))
     }
 
     pub fn push_iter(&mut self, i: impl Iterator<Item = u8>) {
-        i.map(dna::a_to_b).for_each(|x| self.0.push(x));
+        i.map(dna::dna_to_u8).for_each(|x| self.0.push(x));
     }
 
     pub fn from_string(s: &str) -> Self {
@@ -37,12 +37,13 @@ impl fmt::Display for Seq {
         let s = self
             .0
             .iter()
-            .map(dna::b_to_a)
+            .map(dna::u8_to_dna)
             .collect::<Vec<&str>>()
             .join("");
         write!(f, "{}", s)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use crate::seq::Seq;
@@ -63,9 +64,9 @@ mod tests {
 
     #[test]
     fn check_notequal() {
-        let s1 = Seq::from_string("ATCDABC");
-        let s2 = Seq::from_string("ATCGABC");
-        assert_ne!(s1, s2)
+        let s1 = Seq::from_string("ATCAAGC");
+        let s2 = Seq::from_string("ATCGAGC");
+        assert_ne!(s1, s2);
     }
 
     #[test]
