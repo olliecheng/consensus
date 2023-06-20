@@ -4,12 +4,16 @@ pub type GenericBufReader = BufReader<Box<dyn Read>>;
 
 pub struct ByteReader {
     pub reader: GenericBufReader,
+    buffer: Vec<u8>,
 }
 
 #[allow(dead_code)]
 impl ByteReader {
     pub fn new(reader: GenericBufReader) -> Self {
-        Self { reader }
+        Self {
+            reader,
+            buffer: Vec::new(),
+        }
     }
 
     pub fn next_byte(&mut self) -> Option<u8> {
@@ -23,72 +27,33 @@ impl ByteReader {
         }
     }
 
-    pub fn apply_on_slice_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
+    pub fn apply_on_slice_until_byte<F>(&mut self, delim: u8, mut f: F) -> usize
     where
-        F: FnMut(&[u8], usize),
+        F: FnMut(&[u8]),
     {
-        let mut read = 0;
-        loop {
-            let (done, used) = {
-                let available = match self.reader.fill_buf() {
-                    Ok(n) => n,
-                    Err(e) => panic!("Byte not readable with error {:?}", e),
-                };
+        // clear buffer without changing capacity
+        self.buffer.clear();
 
-                match memchr::memchr(delim, available) {
-                    Some(i) => {
-                        let length = i;
+        let size = self
+            .reader
+            .read_until(delim, &mut self.buffer)
+            .expect("Byte not readable");
+        self.buffer.truncate(size - 1);
 
-                        let chunks: usize = length / 16;
-                        let remainder = length - chunks * 16;
+        self.buffer.chunks(16).for_each(f);
 
-                        for idx in 0..chunks {
-                            let start_idx = idx * 16;
-                            f(&available[start_idx..start_idx + 16], 16);
-                        }
-
-                        if remainder != 0 {
-                            f(&available[chunks * 16..i], remainder);
-                        }
-
-                        (true, i + 1)
-                        // f(&available[0..i], i);
-                        // (true, i + 1)
-                    }
-                    None => {
-                        let length = available.len();
-                        let chunks: usize = length / 16;
-
-                        for i in 0..chunks {
-                            let start_idx = i * 16;
-                            f(&available[start_idx..start_idx + 16], 16);
-                        }
-
-                        (false, chunks * 16)
-                    }
-                }
-            };
-
-            self.reader.consume(used);
-            read += used;
-
-            if done {
-                return Some(read);
-            } else if used == 0 {
-                return None;
-            }
-        }
+        size
     }
 
-    pub fn apply_until_byte<F>(&mut self, delim: u8, mut f: F) -> Option<usize>
+    pub fn apply_until_byte<F>(&mut self, delim: u8, mut f: F) -> usize
     where
         F: FnMut(u8),
     {
-        self.apply_on_slice_until_byte(delim, |x, _| x.iter().for_each(|v| f(*v)))
+        self.apply_on_slice_until_byte(delim, |x| x.iter().for_each(|v| f(*v)))
     }
 
     pub fn seek_until_byte(&mut self, delim: u8) {
-        self.apply_on_slice_until_byte(delim, |_, _| ());
+        self.apply_on_slice_until_byte(delim, |_| ());
     }
 
     pub fn read_line(&mut self, buf: &mut String) -> Result<usize, std::io::Error> {

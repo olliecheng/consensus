@@ -101,8 +101,8 @@ impl Iterator for FastQReadIterator {
 
         // line 2: fastq sequence
         let mut seq = seq::Seq::new();
-        self.bytes.apply_on_slice_until_byte(b'\n', |chunk, size| {
-            println!("chunk {:?}, size {}", chunk, size);
+        self.bytes.apply_on_slice_until_byte(b'\n', |chunk| {
+            let size = chunk.len();
             if size == 16 {
                 // https://users.rust-lang.org/t/unsafe-conversion-from-slice-to-array-reference/88910/2
                 unsafe { seq.push_u32_chunk_of_n(&*chunk.as_ptr().cast(), 16) }
@@ -120,8 +120,13 @@ impl Iterator for FastQReadIterator {
         {
             assert!(
                 x == b'+',
-                "3rd line of each block should start with a +, not {} ({})",
+                "3rd line of each block should start with a +, not {}, then {} ({})",
                 x as char,
+                {
+                    let mut ln = String::new();
+                    self.bytes.read_line(&mut ln).unwrap();
+                    ln
+                },
                 self.lines
             )
         }
