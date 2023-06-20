@@ -51,6 +51,22 @@ impl FastQReadIterator {
         }
     }
 
+    fn read_to_seq(&mut self, seq: &mut seq::Seq) {
+        self.bytes.apply_on_slice_until_byte(b'\n', |chunk| {
+            let size = chunk.len();
+            if size == 16 {
+                // https://users.rust-lang.org/t/unsafe-conversion-from-slice-to-array-reference/88910/2
+                unsafe { seq.push_u32_chunk_of_n(&*chunk.as_ptr().cast(), 16) }
+            } else {
+                let mut new_arr = [0u8; 16];
+                chunk.iter().enumerate().for_each(|(i, x)| unsafe {
+                    *new_arr.get_unchecked_mut(i) = *x;
+                });
+                seq.push_u32_chunk_of_n(&new_arr, size)
+            }
+        });
+    }
+
     fn read_n_to_seq(&mut self, n: usize, seq: &mut seq::Seq) {
         for _ in 0..n {
             let v = self.bytes.next_byte().expect("Found EOF, not allowed");
@@ -101,40 +117,13 @@ impl Iterator for FastQReadIterator {
 
         // line 2: fastq sequence
         let mut seq = seq::Seq::new();
-        self.bytes.apply_on_slice_until_byte(b'\n', |chunk| {
-            let size = chunk.len();
-            if size == 16 {
-                // https://users.rust-lang.org/t/unsafe-conversion-from-slice-to-array-reference/88910/2
-                unsafe { seq.push_u32_chunk_of_n(&*chunk.as_ptr().cast(), 16) }
-            } else {
-                let mut new_arr = [0u8; 16];
-                chunk.iter().enumerate().for_each(|(i, x)| unsafe {
-                    *new_arr.get_unchecked_mut(i) = *x;
-                });
-                seq.push_u32_chunk_of_n(&new_arr, size)
-            }
-        });
+        self.read_to_seq(&mut seq);
 
         // line 3: expect a +
-        let x = self.bytes.next_byte().expect("Expected + not EOF");
-        {
-            assert!(
-                x == b'+',
-                "3rd line of each block should start with a +, not {}, then {} ({})",
-                x as char,
-                {
-                    let mut ln = String::new();
-                    self.bytes.read_line(&mut ln).unwrap();
-                    ln
-                },
-                self.lines
-            )
+        match self.bytes.next_byte() {
+            Some(b'+') => (),
+            _ => panic!("Wrong character: not + starting line {}", self.lines),
         }
-        // assert!(
-        //     self.bytes.next_byte().expect("Expected + not EOF") == b'+',
-        //     "3rd line of each block should start with a + ({})",
-        //     self.lines
-        // );
         self.bytes.seek_until_byte(b'\n');
 
         // line 4: read quality scores - for now, add to a string
