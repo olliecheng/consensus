@@ -27,7 +27,7 @@ impl ByteReader {
         }
     }
 
-    pub fn apply_on_slice_until_byte<F>(&mut self, delim: u8, mut f: F) -> usize
+    pub fn apply_on_slice_until_byte<F>(&mut self, delim: u8, f: F) -> usize
     where
         F: FnMut(&[u8]),
     {
