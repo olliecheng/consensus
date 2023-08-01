@@ -1,5 +1,6 @@
 #![allow(clippy::new_without_default)]
 
+pub mod align;
 pub mod options;
 pub mod pairings;
 pub mod reader;

@@ -1,14 +1,14 @@
 use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref ASCII_LOOKUP: [&'static str; 4] = {
-        let mut l = ["A"; 4];
+    static ref ASCII_LOOKUP: [char; 4] = {
+        let mut l = ['A'; 4];
 
         // Do not need:
         // l[0b00 as usize] = 'A';
-        l[0b01] = "C";
-        l[0b11] = "G";
-        l[0b10] = "T";
+        l[0b01] = 'C';
+        l[0b11] = 'G';
+        l[0b10] = 'T';
 
         l
     };
@@ -20,7 +20,7 @@ pub fn dna_to_u8(s: u8) -> u8 {
 }
 
 #[inline(always)]
-pub fn u8_to_dna(b: u8) -> &'static str {
+pub fn u8_to_dna(b: u8) -> char {
     assert!(
         b <= 0b11,
         "Byte must be 2-bits to represent a valid alphabet"

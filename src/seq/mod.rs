@@ -8,7 +8,7 @@ pub use self::sequence::Seq;
 
 pub type Qual = String;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Record {
     pub id: Identifier,
     pub metadata: Vec<u8>,

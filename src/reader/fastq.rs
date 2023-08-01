@@ -37,8 +37,9 @@ impl super::Reader<Record> for FastQReader {
 pub struct FastQReadIterator {
     bytes: bytes::ByteReader,
     options: crate::options::Options,
-    lines: u64,
+    reads: usize,
     eof: bool,
+    avg_seq_len: f32,
 }
 
 impl FastQReadIterator {
@@ -46,8 +47,9 @@ impl FastQReadIterator {
         Self {
             bytes: bytes::ByteReader::new(reader),
             options,
-            lines: 0,
             eof: false,
+            avg_seq_len: 0.0,
+            reads: 0,
         }
     }
 
@@ -90,7 +92,7 @@ impl Iterator for FastQReadIterator {
                 return None;
             }
             Some(b'@') => (),
-            _ => panic!("Wrong character: not @ starting line {}", self.lines),
+            _ => panic!("Wrong character: not @ starting read {}", self.reads),
         }
 
         // read barcode
@@ -101,7 +103,7 @@ impl Iterator for FastQReadIterator {
         assert!(
             self.bytes.next_byte().expect("Expected _, not EOF") == b'_',
             "{} Next character after bc must be _",
-            self.lines
+            self.reads
         );
 
         // next: UMI
@@ -116,13 +118,19 @@ impl Iterator for FastQReadIterator {
         }
 
         // line 2: fastq sequence
-        let mut seq = seq::Seq::new();
+        let mut seq = seq::Seq::with_capacity({
+            if self.avg_seq_len > 10.0 {
+                self.avg_seq_len as usize
+            } else {
+                10
+            }
+        });
         let length = self.read_to_seq(&mut seq);
 
         // line 3: expect a +
         match self.bytes.next_byte() {
             Some(b'+') => (),
-            _ => panic!("Wrong character: not + starting line {}", self.lines),
+            _ => panic!("Wrong character: not + starting read {}", self.reads),
         }
         self.bytes.seek_until_byte(b'\n');
 
@@ -134,7 +142,10 @@ impl Iterator for FastQReadIterator {
             self.eof = true;
         }
 
-        self.lines += 4;
+        self.reads += 1;
+        // calculate new exponentially weighted moving average (EMA)
+        let alpha = 0.6;
+        self.avg_seq_len = (alpha * length as f32) + (1.0 - alpha) * (self.avg_seq_len as f32);
 
         Some(Record {
             metadata,

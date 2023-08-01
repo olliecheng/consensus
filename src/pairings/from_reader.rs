@@ -6,7 +6,7 @@ impl PairingCollection {
         let mut collection = Self::new();
 
         for read in reader.read() {
-            collection.add_read(read.id, read.seq);
+            collection.add_read(read);
         }
 
         collection

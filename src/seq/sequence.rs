@@ -3,7 +3,7 @@ use std::fmt;
 
 use super::bitenc::BitEnc;
 
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub struct Seq(BitEnc);
 
 impl Seq {
@@ -34,16 +34,15 @@ impl Seq {
         seq.push_iter(s.bytes());
         seq
     }
+
+    pub fn to_ascii(&self) -> Vec<u8> {
+        self.0.iter().map(|x| dna::u8_to_dna(x) as u8).collect()
+    }
 }
 
 impl fmt::Display for Seq {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = self
-            .0
-            .iter()
-            .map(dna::u8_to_dna)
-            .collect::<Vec<&str>>()
-            .join("");
+        let s = String::from_utf8(self.to_ascii()).unwrap();
         write!(f, "{}", s)
     }
 }
@@ -106,5 +105,11 @@ mod tests {
         let s1 = Seq::from_string("ATCG");
         let s2 = Seq::from_string("GCTA");
         assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn to_ascii() {
+        let s1 = Seq::from_string("ATcgACG");
+        assert_eq!(s1.to_ascii(), vec![65u8, 84, 67, 71, 65, 67, 71]);
     }
 }
