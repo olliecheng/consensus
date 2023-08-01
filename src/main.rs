@@ -19,13 +19,6 @@ fn main() {
     let mut seqs = PairingCollection::from_reader_fastq(&mut r);
 
     for x in seqs.duplicates() {
-        println!("{}: BC:{},UMI:{}", x.1.len(), x.0.bc, x.0.umi);
-
-        for rec in x.1 {
-            println!("S: {}", rec.seq);
-        }
-
-        align::msa(x.1);
-        break;
+        align::msa(x.0, x.1);
     }
 }
