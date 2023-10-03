@@ -9,7 +9,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 fn file_doesnt_exist() -> TestResult {
     let mut cmd = Command::cargo_bin(BINARY)?;
 
-    cmd.arg("file_which_does_not_exist.fastq");
+    cmd.arg("consensus").arg("file_which_does_not_exist.fastq");
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("No such file or directory"));

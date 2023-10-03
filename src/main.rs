@@ -1,36 +1,14 @@
-use clap::{Args, Parser, Subcommand};
 use proj::align;
+use proj::options::{Cli, Commands};
 use proj::pairings::PairingCollection;
 use proj::reader::fastq;
 
-#[derive(Parser)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-
-    #[arg(default_value_t = String::from("tests/samples/small.fastq"))]
-    file: String,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    Count(CountArgs),
-    Consensus(ConsensusArgs),
-}
-
-#[derive(Args)]
-struct CountArgs {}
-
-#[derive(Args)]
-struct ConsensusArgs {}
+use clap::Parser;
 
 fn main() {
     let cli = Cli::parse();
 
-    let file_path = cli.file;
-
-    let mut r = fastq::FastQReader::new(file_path);
-
+    let mut r = fastq::FastQReader::new(cli.clone());
     let mut seqs = PairingCollection::from_reader_fastq(&mut r);
 
     match &cli.command {

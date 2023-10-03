@@ -1,4 +1,5 @@
 use super::bytes;
+use crate::options::Cli;
 use crate::seq::{self, Record};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -6,44 +7,43 @@ use std::io::{BufReader, Read};
 #[allow(dead_code)]
 pub struct FastQReader {
     filename: String,
-    options: crate::options::Options,
+    options: Cli,
 }
 
 impl FastQReader {
-    pub fn new(filename: String) -> Self {
+    pub fn new(cli: Cli) -> Self {
         Self {
-            filename,
-            options: crate::options::Options { bc: 16, umi: 12 },
+            filename: cli.file.clone(),
+            options: cli,
         }
     }
 }
 
 impl super::Reader<Record> for FastQReader {
-    fn read(&mut self) -> Box<dyn Iterator<Item = Record>> {
-        Self::read_file(&self.filename)
+    fn read(&self) -> Box<dyn Iterator<Item = Record>> {
+        Self::read_file(&self.filename, self.options.clone())
     }
 
-    fn read_file(filename: &str) -> Box<dyn Iterator<Item = Record>> {
+    fn read_file(filename: &str, options: Cli) -> Box<dyn Iterator<Item = Record>> {
         let file = File::open(std::path::Path::new(filename)).expect("Could not open file");
-        Self::read_from_reader(Box::new(file))
+        Self::read_from_reader(Box::new(file), options)
     }
 
-    fn read_from_reader(reader: Box<dyn Read>) -> Box<dyn Iterator<Item = Record>> {
-        let options = crate::options::Options { bc: 16, umi: 12 };
+    fn read_from_reader(reader: Box<dyn Read>, options: Cli) -> Box<dyn Iterator<Item = Record>> {
         Box::new(FastQReadIterator::new(BufReader::new(reader), options))
     }
 }
 
 pub struct FastQReadIterator {
     bytes: bytes::ByteReader,
-    options: crate::options::Options,
+    options: Cli,
     reads: usize,
     eof: bool,
     avg_seq_len: f32,
 }
 
 impl FastQReadIterator {
-    pub fn new(reader: bytes::GenericBufReader, options: crate::options::Options) -> Self {
+    pub fn new(reader: bytes::GenericBufReader, options: Cli) -> Self {
         Self {
             bytes: bytes::ByteReader::new(reader),
             options,
@@ -158,21 +158,22 @@ impl Iterator for FastQReadIterator {
 
 #[cfg(test)]
 mod tests {
+    use crate::options::default_cli;
     use crate::reader::fastq;
     use crate::reader::Reader;
     use crate::seq::{Identifier, Seq};
+
     use pretty_assertions::assert_eq;
     use std::hint::black_box;
 
     fn read_file(file_path: String) -> Vec<fastq::Record> {
-        let mut r = fastq::FastQReader::new(file_path);
-
+        let r = fastq::FastQReader::new(default_cli(file_path));
         r.read().collect()
     }
 
     fn read_string(v: String) -> Vec<fastq::Record> {
         let f = Box::new(std::io::Cursor::new(v));
-        let r = fastq::FastQReader::read_from_reader(f);
+        let r = fastq::FastQReader::read_from_reader(f, default_cli("<internal>".into()));
 
         r.collect()
     }
