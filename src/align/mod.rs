@@ -38,7 +38,7 @@ pub fn msa(id: &seq::Identifier, sequences: &Vec<seq::Record>) {
     let child = Command::new(spoa_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .args(["-l", "0", &temp_file_path])
+        .args(["-l", "2", &temp_file_path])
         // -l 0: local
         // -l 1: global
         // -l 2: semi-global
