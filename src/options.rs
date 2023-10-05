@@ -13,6 +13,9 @@ pub struct Cli {
 
     #[arg(global = true, default_value_t = 12, long)]
     pub umi: usize,
+
+    #[arg(global = true, default_value_t = false, short, long)]
+    pub gzip: bool,
 }
 
 #[derive(Subcommand, Clone)]

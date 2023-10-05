@@ -1,6 +1,8 @@
 use super::bytes;
 use crate::options::Cli;
 use crate::seq::{self, Record};
+
+use flate2::read::GzDecoder;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
@@ -26,7 +28,13 @@ impl super::Reader<Record> for FastQReader {
 
     fn read_file(filename: &str, options: Cli) -> Box<dyn Iterator<Item = Record>> {
         let file = File::open(std::path::Path::new(filename)).expect("Could not open file");
-        Self::read_from_reader(Box::new(file), options)
+        Self::read_from_reader(
+            match options.gzip {
+                true => Box::new(BufReader::new(GzDecoder::new(file))),
+                false => Box::new(BufReader::new(file)),
+            },
+            options,
+        )
     }
 
     fn read_from_reader(reader: Box<dyn Read>, options: Cli) -> Box<dyn Iterator<Item = Record>> {
