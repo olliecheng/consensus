@@ -42,6 +42,11 @@ fn main() {
                 count, total
             );
 
+            println!(
+                "Total number of reads including duplicates: {}",
+                seqs.total_reads
+            );
+
             println!("\nBreakdown:");
             for i in map.keys().sorted() {
                 println!("{}: {}", i, map.get(i).unwrap());
