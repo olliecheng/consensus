@@ -16,6 +16,7 @@ memchr = "2.5.0"
 petgraph = "0.6.3"
 xxhash-rust = {version = "0.8.6", features = ["xxh3", "const_xxh3"] }
 flate2 = { version = "1.0.17", features = ["zlib-ng"], default-features = false }
+itertools = "0.11.0"
 
 [profile.release-with-debug]
 inherits = "release"
