@@ -1,4 +1,4 @@
-use crate::seq;
+use crate::pairings::Pairing;
 
 use std::env;
 use std::fs;
@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 // use petgraph::dot::{Config, Dot};
 
-pub fn msa(id: &seq::Identifier, sequences: &Vec<seq::RecordData>) {
+pub fn msa(pairing: &Pairing) {
     let temp_file_path = match env::var("TEMP_FASTQ") {
         Ok(v) => v,
         Err(_) => String::from("/tmp/temporary_fastq_for_spoa.fastq"),
@@ -20,6 +20,9 @@ pub fn msa(id: &seq::Identifier, sequences: &Vec<seq::RecordData>) {
     // first, output a FASTQ file to /tmp
     let mut temp_fq = String::new();
 
+    let id = pairing.id;
+    let sequences = pairing.reads;
+
     for (i, rec) in sequences.iter().enumerate() {
         println!(">{}:{}_{}\n{}", id.bc, id.umi, i + 1, rec.seq);
         temp_fq = format!(
@@ -32,7 +35,7 @@ pub fn msa(id: &seq::Identifier, sequences: &Vec<seq::RecordData>) {
     }
 
     // write to /tmp
-    fs::write(&temp_file_path, temp_fq).expect("Unable to write file");
+    fs::write(&temp_file_path, temp_fq.clone()).expect("Unable to write file");
 
     // run SPOA through the command line
     let child = Command::new(spoa_path)
@@ -60,10 +63,11 @@ pub fn msa(id: &seq::Identifier, sequences: &Vec<seq::RecordData>) {
                 .expect("Fastq should be well formed with 2 lines")
         );
     } else {
-        println!(
+        eprintln!(
             "Fail - error\nstdout:\n{}\n\nstderr:\n{}\n",
             String::from_utf8(result.stdout).unwrap(),
             String::from_utf8(result.stderr).unwrap()
-        )
+        );
+        eprintln!("{}\n\n\n\n\n", temp_fq);
     }
 }

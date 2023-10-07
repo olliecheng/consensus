@@ -1,6 +1,6 @@
 use crate::pairings;
 use crate::seq::dna;
-use crate::seq::{Record, Seq};
+use crate::seq::Seq;
 
 use std::fmt;
 
@@ -16,7 +16,7 @@ pub struct Stats {
 }
 
 impl Stats {
-    pub fn from(p: pairings::Pairing) -> Self {
+    pub fn from(p: &pairings::Pairing) -> Self {
         let read_cnt = p.reads.len();
         let id_len = (p.id.bc.len() + p.id.umi.len()) as f32;
 
@@ -47,7 +47,7 @@ impl Stats {
         }
     }
 
-    pub fn add_pairing(&mut self, p: pairings::Pairing) {
+    pub fn add_pairing(&mut self, p: &pairings::Pairing) {
         let n = Self::from(p);
 
         let old_dups = self.duplicates as f32;

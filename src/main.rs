@@ -17,9 +17,23 @@ fn main() {
 
     match &cli.command {
         Commands::Consensus(_) => {
+            let mut n_err = 0;
+
             for x in seqs.duplicates() {
-                align::msa(x.id, x.reads);
+                let s = Stats::from(&x);
+                if s.pc_t > 50.0 || s.pc_a > 50.0 {
+                    // these reads all have an abnormally high PC_T and/or PC_A count
+                    // we should probably ignore them
+                    eprintln!("Error due to %T or %A:\n{}", x);
+                    n_err += 1;
+                }
+
+                align::msa(&x);
             }
+            eprintln!(
+                "\n\nCompleted, with {} errors due to %A or %T counts.",
+                n_err
+            );
         }
 
         Commands::Stats(_) => {
@@ -39,8 +53,8 @@ fn main() {
                 let e = map
                     .entry(duplicates)
                     .or_insert_with(|| Stats::default(duplicates.to_string()));
-                e.add_pairing(x);
-                // *e += 1;
+
+                e.add_pairing(&x);
             }
 
             println!(

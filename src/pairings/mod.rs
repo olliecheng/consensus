@@ -4,6 +4,7 @@ use crate::seq::{Identifier, Record, RecordData};
 use std::collections::HashMap;
 use std::vec::Vec;
 
+use std::fmt;
 use xxhash_rust::xxh3::Xxh3Builder as Hasher;
 
 #[derive(Debug)]
@@ -13,6 +14,16 @@ pub struct BarcodeCollection {}
 pub struct Pairing<'a> {
     pub id: &'a Identifier,
     pub reads: &'a Vec<RecordData>,
+}
+
+impl<'a> fmt::Display for Pairing<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut reads_str = String::new();
+        for i in self.reads.iter() {
+            reads_str = format!("{}Seq_{}\n", reads_str, i.seq);
+        }
+        write!(f, "BC_{}\t UMI_{}\n{}", self.id.bc, self.id.umi, reads_str)
+    }
 }
 
 #[derive(Debug)]

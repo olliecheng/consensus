@@ -161,7 +161,7 @@ impl Iterator for FastQReadIterator {
             data: RecordData {
                 seq,
                 metadata,
-                qual: Vec::new(),
+                qual,
             },
         })
     }
