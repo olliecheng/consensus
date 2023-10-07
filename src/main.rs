@@ -2,6 +2,7 @@ use proj::align;
 use proj::options::{Cli, Commands};
 use proj::pairings::PairingCollection;
 use proj::reader::fastq;
+use proj::stats::Stats;
 
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -17,24 +18,29 @@ fn main() {
     match &cli.command {
         Commands::Consensus(_) => {
             for x in seqs.duplicates() {
-                align::msa(x.0, x.1);
+                align::msa(x.id, x.reads);
             }
         }
 
-        Commands::Count(_) => {
+        Commands::Stats(_) => {
             let mut total = 0;
             let mut count = 0;
 
             let mut map = HashMap::new();
 
-            for x in seqs.duplicates() {
+            for x in seqs.all() {
                 count += 1;
 
-                let duplicates = x.1.len();
-                total += duplicates;
+                let duplicates = x.reads.len();
+                if duplicates > 1 {
+                    total += duplicates;
+                }
 
-                let e = map.entry(duplicates).or_insert(0);
-                *e += 1;
+                let e = map
+                    .entry(duplicates)
+                    .or_insert_with(|| Stats::default(duplicates.to_string()));
+                e.add_pairing(x);
+                // *e += 1;
             }
 
             println!(
@@ -48,8 +54,10 @@ fn main() {
             );
 
             println!("\nBreakdown:");
+            println!("{}", Stats::display_header());
             for i in map.keys().sorted() {
-                println!("{}: {}", i, map.get(i).unwrap());
+                // println!("{}: {}", i, map.get(i).unwrap());
+                println!("{}", map.get(i).unwrap());
             }
         }
     }

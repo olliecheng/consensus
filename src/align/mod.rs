@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 
 // use petgraph::dot::{Config, Dot};
 
-pub fn msa(id: &seq::Identifier, sequences: &Vec<seq::Record>) {
+pub fn msa(id: &seq::Identifier, sequences: &Vec<seq::RecordData>) {
     let temp_file_path = match env::var("TEMP_FASTQ") {
         Ok(v) => v,
         Err(_) => String::from("/tmp/temporary_fastq_for_spoa.fastq"),

@@ -11,6 +11,11 @@ pub type Qual = String;
 #[derive(Debug, PartialEq, Clone)]
 pub struct Record {
     pub id: Identifier,
+    pub data: RecordData,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct RecordData {
     pub metadata: Vec<u8>,
     pub seq: Seq,
     pub qual: Vec<u8>,

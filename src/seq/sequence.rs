@@ -4,7 +4,7 @@ use std::fmt;
 use super::bitenc::BitEnc;
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
-pub struct Seq(BitEnc);
+pub struct Seq(pub BitEnc);
 
 impl Seq {
     pub fn new() -> Self {
@@ -26,6 +26,10 @@ impl Seq {
 
     pub fn push_u32_chunk_of_n<'a>(&mut self, chunk: &'a [u8; 16], n: usize) {
         self.0.push_block_with_n_elems(dna::dna_to_u32(chunk), n);
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.nr_symbols()
     }
 
     pub fn from_string(s: &str) -> Self {

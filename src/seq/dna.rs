@@ -1,7 +1,12 @@
 use lazy_static::lazy_static;
 
+pub const A: u8 = 0b00;
+pub const T: u8 = 0b10;
+pub const C: u8 = 0b01;
+pub const G: u8 = 0b11;
+
 lazy_static! {
-    static ref ASCII_LOOKUP: [char; 4] = {
+    pub static ref ASCII_LOOKUP: [char; 4] = {
         let mut l = ['A'; 4];
 
         // Do not need:

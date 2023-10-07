@@ -1,5 +1,5 @@
 pub mod from_reader;
-use crate::seq::{Identifier, Record};
+use crate::seq::{Identifier, Record, RecordData};
 
 use std::collections::HashMap;
 use std::vec::Vec;
@@ -10,10 +10,25 @@ use xxhash_rust::xxh3::Xxh3Builder as Hasher;
 pub struct BarcodeCollection {}
 
 #[derive(Debug)]
+pub struct Pairing<'a> {
+    pub id: &'a Identifier,
+    pub reads: &'a Vec<RecordData>,
+}
+
+#[derive(Debug)]
 pub struct PairingCollection {
-    pub pairings: HashMap<Identifier, Vec<Record>, Hasher>,
+    pub pairings: HashMap<Identifier, Vec<RecordData>, Hasher>,
     // duplicates_set: HashSet<Identifier, Hasher>,
     pub total_reads: i64,
+}
+
+impl<'a> From<(&'a Identifier, &'a Vec<RecordData>)> for Pairing<'a> {
+    fn from(value: (&'a Identifier, &'a Vec<RecordData>)) -> Self {
+        Self {
+            id: value.0,
+            reads: value.1,
+        }
+    }
 }
 
 impl PairingCollection {
@@ -32,25 +47,26 @@ impl PairingCollection {
     }
 
     pub fn add_read(&mut self, record: Record) -> bool {
-        let id = record.id.clone();
+        let id = record.id;
         self.total_reads += 1;
 
         if let Some(v) = self.pairings.get_mut(&id) {
             // duplicate exists
-            v.push(record);
+            v.push(record.data);
             true
         } else {
-            self.pairings.insert(id, vec![record]);
+            self.pairings.insert(id, vec![record.data]);
             false
         }
     }
 
     // https://github.com/rust-lang/rfcs/blob/master/text/1522-conservative-impl-trait.md
     // impl trait - rust 1.26
-    pub fn duplicates(&mut self) -> impl Iterator<Item = (&Identifier, &Vec<Record>)> {
-        self.pairings
-            .keys()
-            .map(|x| self.pairings.get_key_value(x).unwrap())
-            .filter(|x| x.1.len() > 1)
+    pub fn duplicates(&mut self) -> impl Iterator<Item = Pairing> {
+        self.all().filter(|x| x.reads.len() > 1)
+    }
+
+    pub fn all(&mut self) -> impl Iterator<Item = Pairing> {
+        self.pairings.iter().map(|x| Pairing::from(x))
     }
 }

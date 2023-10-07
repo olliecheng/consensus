@@ -20,15 +20,15 @@ pub struct Cli {
 
 #[derive(Subcommand, Clone)]
 pub enum Commands {
-    Count(CountArgs),
     Consensus(ConsensusArgs),
+    Stats(StatsArgs),
 }
 
 #[derive(Args, Clone)]
-pub struct CountArgs {}
+pub struct ConsensusArgs {}
 
 #[derive(Args, Clone)]
-pub struct ConsensusArgs {}
+pub struct StatsArgs {}
 
 pub struct Options {
     pub bc: usize,

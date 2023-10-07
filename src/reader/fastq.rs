@@ -1,6 +1,6 @@
 use super::bytes;
 use crate::options::Cli;
-use crate::seq::{self, Record};
+use crate::seq::{self, Record, RecordData};
 
 use flate2::read::GzDecoder;
 use std::fs::File;
@@ -151,15 +151,18 @@ impl Iterator for FastQReadIterator {
         }
 
         self.reads += 1;
+
         // calculate new exponentially weighted moving average (EMA)
         let alpha = 0.6;
         self.avg_seq_len = (alpha * length as f32) + (1.0 - alpha) * (self.avg_seq_len as f32);
 
         Some(Record {
-            metadata,
-            seq,
             id: seq::Identifier { bc, umi },
-            qual,
+            data: RecordData {
+                seq,
+                metadata,
+                qual: Vec::new(),
+            },
         })
     }
 }
