@@ -47,7 +47,7 @@ impl Stats {
         }
     }
 
-    pub fn add_pairing(&mut self, p: &pairings::Pairing) {
+    pub fn add_pairing(&mut self, p: &pairings::Pairing) -> Self {
         let n = Self::from(p);
 
         let old_dups = self.duplicates as f32;
@@ -63,6 +63,8 @@ impl Stats {
 
         self.duplicates += n.duplicates;
         self.pairs += 1;
+
+        return n;
     }
 
     pub fn default(label: String) -> Self {
@@ -78,7 +80,7 @@ impl Stats {
     }
 
     pub fn display_header() -> &'static str {
-        "label\tquantity\t%T\t%A\tlength" // \tquality"
+        "label\tquant\t%T\t%A\tlength" // \tquality"
     }
 }
 

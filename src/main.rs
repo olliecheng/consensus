@@ -31,7 +31,7 @@ fn main() {
                 align::msa(&x);
             }
             eprintln!(
-                "\n\nCompleted, with {} errors due to %A or %T counts.",
+                "\n\nCompleted, with {} errors due to %A or %T counts (which were removed).",
                 n_err
             );
         }
@@ -41,6 +41,7 @@ fn main() {
             let mut count = 0;
 
             let mut map = HashMap::new();
+            let mut n_err = (0, 0); // 0: normal, duplicate
 
             for x in seqs.all() {
                 count += 1;
@@ -54,7 +55,15 @@ fn main() {
                     .entry(duplicates)
                     .or_insert_with(|| Stats::default(duplicates.to_string()));
 
-                e.add_pairing(&x);
+                let stat = e.add_pairing(&x);
+
+                if stat.pc_t > 50.0 || stat.pc_a > 50.0 {
+                    if duplicates > 1 {
+                        n_err.1 += 1
+                    }
+
+                    n_err.0 += 1
+                }
             }
 
             println!(
@@ -65,6 +74,11 @@ fn main() {
             println!(
                 "Total number of reads including duplicates: {}",
                 seqs.total_reads
+            );
+
+            println!(
+                "\n{} reads had a %T or %A greater than 50%. {} were duplicates",
+                n_err.0, n_err.1
             );
 
             println!("\nBreakdown:");
