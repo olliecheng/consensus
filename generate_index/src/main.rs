@@ -48,10 +48,8 @@ fn iter_lines<W: std::io::Write>(mut reader: BufReader<File>, mut wtr: Writer<W>
             let umi = &result[(i + 1)..j];
             let id = &result[(j + 1)..k];
 
-            let actual_pos = position + (position != 0) as usize;
-
             //println!("{}, {}, {}, {}", bc, umi, id, actual_pos);
-            wtr.write_record(&[id, bc, "?", "?", umi, &actual_pos.to_string()])
+            wtr.write_record(&[id, bc, "?", "?", umi, &position.to_string()])
                 .unwrap();
         }
         count += 1;
