@@ -1,6 +1,6 @@
 use csv::ReaderBuilder;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 
 #[derive(Eq, PartialEq, Hash, Debug)]
@@ -15,7 +15,7 @@ pub struct DuplicateStatistics {
     pub duplicate_reads: usize,
     pub duplicate_ids: usize,
     pub proportion_duplicate: f64,
-    pub distribution: HashMap<usize, usize>,
+    pub distribution: BTreeMap<usize, usize>,
 }
 
 pub fn get_duplicates(
@@ -27,7 +27,7 @@ pub fn get_duplicates(
         duplicate_reads: 0,
         duplicate_ids: 0,
         proportion_duplicate: 0.0,
-        distribution: HashMap::new(),
+        distribution: BTreeMap::new(),
     };
 
     let mut reader = ReaderBuilder::new()
