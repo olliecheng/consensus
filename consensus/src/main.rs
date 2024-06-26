@@ -2,6 +2,7 @@ use bio::io::fastq;
 use clap::{Parser, Subcommand};
 use serde_json;
 
+mod call;
 mod duplicates;
 
 #[derive(Parser)]
@@ -43,12 +44,12 @@ fn main() {
             println!("{}", serde_json::to_string_pretty(&statistics).unwrap());
         }
         Some(Commands::Generate { input, output }) => {
-            let (duplicates, statistics) =
+            eprintln!("Collecting duplicates...");
+            let (duplicates, _statistics) =
                 duplicates::get_duplicates(&cli.index).expect("Could not parse index.");
+            eprintln!("Iterating through individual duplicates");
 
-            for (key, val) in duplicates.iter() {
-                // println!("key: {key:?}, val: {val:?}");
-            }
+            call::consensus(&input, &output, duplicates);
         }
         None => {}
     }

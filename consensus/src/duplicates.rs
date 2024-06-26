@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 
+pub type DuplicateMap = HashMap<RecordIdentifier, Vec<usize>>;
+
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct RecordIdentifier {
     pub bc: String,
@@ -18,9 +20,7 @@ pub struct DuplicateStatistics {
     pub distribution: BTreeMap<usize, usize>,
 }
 
-pub fn get_duplicates(
-    index: &str,
-) -> Result<(HashMap<RecordIdentifier, Vec<usize>>, DuplicateStatistics), Box<dyn Error>> {
+pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics), Box<dyn Error>> {
     let mut map = HashMap::<RecordIdentifier, Vec<usize>>::new();
     let mut stats = DuplicateStatistics {
         total_reads: 0,
@@ -52,7 +52,6 @@ pub fn get_duplicates(
         }
     }
 
-    map.retain(|_, v| v.len() > 1);
     map.shrink_to_fit(); // optimise memory usage
 
     stats.duplicate_ids = map.len();
@@ -60,14 +59,21 @@ pub fn get_duplicates(
         .iter()
         .map(|(_, v)| {
             let length = v.len();
-            if let Some(x) = stats.distribution.get_mut(&length) {
-                *x += 1
+            if length > 1 {
+                stats.duplicate_ids += 1;
+
+                if let Some(x) = stats.distribution.get_mut(&length) {
+                    *x += 1
+                } else {
+                    stats.distribution.insert(length, 1);
+                }
+                length
             } else {
-                stats.distribution.insert(length, 1);
+                0
             }
-            length
         })
         .sum();
+
     stats
         .distribution
         .insert(1, stats.total_reads - stats.duplicate_reads);
