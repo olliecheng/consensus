@@ -1,4 +1,5 @@
 use csv::ReaderBuilder;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
 
@@ -8,7 +9,7 @@ pub struct RecordIdentifier {
     pub umi: String,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Debug)]
 pub struct DuplicateStatistics {
     pub total_reads: usize,
     pub duplicate_reads: usize,
