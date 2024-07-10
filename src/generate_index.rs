@@ -2,18 +2,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 
-use clap::Parser;
 use csv::{Writer, WriterBuilder};
-
-#[derive(Parser, Debug)]
-#[command(version, about)]
-struct Args {
-    #[arg(long, default_value = "index.tsv")]
-    output: String,
-
-    #[arg(long)]
-    file: String,
-}
 
 fn iter_lines<W: std::io::Write>(mut reader: BufReader<File>, mut wtr: Writer<W>) {
     let mut position: usize = 0;
@@ -71,12 +60,4 @@ pub fn construct_index(infile: &str, outfile: &str) {
         .unwrap();
 
     iter_lines(reader, wtr);
-}
-
-fn main() {
-    let args = Args::parse();
-
-    construct_index(&args.file, &args.output);
-
-    eprintln!("Completed index generation to {}", &args.output);
 }

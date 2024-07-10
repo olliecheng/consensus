@@ -5,40 +5,64 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-
 use clap::{Parser, Subcommand};
 use serde_json;
 
 mod call;
 mod duplicates;
+mod generate_index;
 
 #[derive(Parser)]
-#[command(version, about, long_about=None)]
+#[command(
+    version = "0.1.0",
+    about = "tools for consensus calling reads with duplicate barcode and UMI matches",
+    arg_required_else_help = true,
+    flatten_help = true
+)]
 struct Cli {
-    /// the index file
-    #[arg(long)]
-    index: String,
-
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Generate a summary of duplicate statistics from an index file
-    Summary {},
+    #[command(arg_required_else_help = true)]
+    Summary {
+        /// the index file
+        #[arg(long)]
+        index: String,
+    },
+
+    /// Create an index file from a demultiplexed .fastq, if one doesn't already exist
+    #[command(arg_required_else_help = true)]
+    GenerateIndex {
+        /// the input .fastq file
+        #[arg(long)]
+        file: String,
+
+        /// the output index file
+        #[arg(long, default_value = "index.tsv")]
+        index: String,
+    },
 
     /// Generate a consensus-called 'cleaned up' file
-    Generate {
+    #[command(arg_required_else_help = true)]
+    Call {
+        /// the index file
+        #[arg(long)]
+        index: String,
+
         /// the input .fastq
         #[arg(long)]
         input: String,
 
+        /// the number of threads to use
         #[arg(long, default_value_t = 4)]
         threads: u8,
 
         /// the output .fastq
-        #[arg(long)]
+        #[arg(long, default_value = "called_reads.fastq")]
         output: Option<String>,
     },
 }
@@ -47,20 +71,21 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(Commands::Summary {}) => {
+        Commands::Summary { index } => {
             let (_, statistics) =
-                duplicates::get_duplicates(&cli.index).expect("Could not parse index.");
+                duplicates::get_duplicates(index).expect("Could not parse index.");
 
             println!("{}", serde_json::to_string_pretty(&statistics).unwrap());
         }
-        Some(Commands::Generate {
+        Commands::Call {
+            index,
             input,
             output,
             threads,
-        }) => {
+        } => {
             eprintln!("Collecting duplicates...");
             let (duplicates, _statistics) =
-                duplicates::get_duplicates(&cli.index).expect("Could not parse index.");
+                duplicates::get_duplicates(index).expect("Could not parse index.");
             eprintln!("Iterating through individual duplicates");
 
             // get output as a BufWriter - equal to stdout if None
@@ -81,6 +106,9 @@ fn main() {
 
             call::consensus(&input, &writer, duplicates, *threads).unwrap();
         }
-        None => {}
+        Commands::GenerateIndex { file, index } => {
+            generate_index::construct_index(file, index);
+            eprintln!("Completed index generation to {index}");
+        }
     }
 }
