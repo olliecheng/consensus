@@ -1,5 +1,5 @@
 use csv::ReaderBuilder;
-use serde::{Serialize};
+use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 
@@ -54,7 +54,7 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
 
     map.shrink_to_fit(); // optimise memory usage
 
-    stats.duplicate_ids = map.len();
+    stats.duplicate_ids = 0;
     stats.duplicate_reads = map
         .iter()
         .map(|(_, v)| {
