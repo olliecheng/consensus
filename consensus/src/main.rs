@@ -1,3 +1,9 @@
+use std::{
+    fs::File,
+    io::{stdout, BufWriter, Write},
+    path::Path,
+};
+
 use bio::io::fastq;
 use clap::{Parser, Subcommand};
 use serde_json;
@@ -29,7 +35,7 @@ enum Commands {
 
         /// the output .fastq
         #[arg(long)]
-        output: String,
+        output: Option<String>,
     },
 }
 
@@ -49,7 +55,22 @@ fn main() {
                 duplicates::get_duplicates(&cli.index).expect("Could not parse index.");
             eprintln!("Iterating through individual duplicates");
 
-            call::consensus(&input, &output, duplicates);
+            // get output as a BufWriter - equal to stdout if None
+            let mut writer = BufWriter::new(match output {
+                Some(ref x) => {
+                    let file = match File::create(&Path::new(x)) {
+                        Ok(r) => r,
+                        Err(_) => {
+                            eprintln!("Could not open file {x}");
+                            return;
+                        }
+                    };
+                    Box::new(file) as Box<dyn Write>
+                }
+                None => Box::new(stdout()) as Box<dyn Write>,
+            });
+
+            call::consensus(&input, &mut writer, duplicates).unwrap();
         }
         None => {}
     }

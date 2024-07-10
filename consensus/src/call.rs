@@ -4,15 +4,15 @@ use bio::io::fastq::{FastqRead, Reader};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::io::prelude::*;
+use std::io::{prelude::*, BufWriter};
 use std::io::{Seek, SeekFrom};
 
 use spoa::{self, AlignmentEngine};
 use std::ffi::{CStr, CString};
 
-pub fn consensus(
+pub fn consensus<R: Write>(
     input: &str,
-    output: &str,
+    mut writer: &mut R,
     duplicates: DuplicateMap,
 ) -> Result<(), Box<dyn Error>> {
     let mut file = File::open(input)?;
@@ -32,7 +32,7 @@ pub fn consensus(
 
         for pos in positions.iter() {
             let mut record = fastq::Record::new();
-            file.seek(SeekFrom::Start(*pos as u64)).unwrap();
+            file.seek(SeekFrom::Start(*pos as u64))?;
 
             let mut reader = fastq::Reader::new(&mut file);
             reader.read(&mut record).unwrap();
@@ -56,8 +56,15 @@ pub fn consensus(
         let consensus_seq = cons
             .to_str()
             .expect("spoa module should produce valid utf-8");
-        eprintln!(">{}_{}\n{consensus_seq}", id.bc, id.umi);
-        // println!("key: {key:?}, val: {val:?}");
+
+        write!(
+            writer,
+            ">{0}_{1}_CON_{2}\n{3}",
+            id.bc,
+            id.umi,
+            positions.len(),
+            consensus_seq
+        );
     }
 
     return Ok(());
