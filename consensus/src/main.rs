@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::{stdout, BufWriter, Write},
     path::Path,
+    sync::{Arc, Mutex},
 };
 
 use bio::io::fastq;
@@ -33,6 +34,9 @@ enum Commands {
         #[arg(long)]
         input: String,
 
+        #[arg(long, default_value_t = 4)]
+        threads: u8,
+
         /// the output .fastq
         #[arg(long)]
         output: Option<String>,
@@ -49,14 +53,18 @@ fn main() {
 
             println!("{}", serde_json::to_string_pretty(&statistics).unwrap());
         }
-        Some(Commands::Generate { input, output }) => {
+        Some(Commands::Generate {
+            input,
+            output,
+            threads,
+        }) => {
             eprintln!("Collecting duplicates...");
             let (duplicates, _statistics) =
                 duplicates::get_duplicates(&cli.index).expect("Could not parse index.");
             eprintln!("Iterating through individual duplicates");
 
             // get output as a BufWriter - equal to stdout if None
-            let mut writer = BufWriter::new(match output {
+            let writer = BufWriter::new(match output {
                 Some(ref x) => {
                     let file = match File::create(&Path::new(x)) {
                         Ok(r) => r,
@@ -65,12 +73,13 @@ fn main() {
                             return;
                         }
                     };
-                    Box::new(file) as Box<dyn Write>
+                    Box::new(file) as Box<dyn Write + Send>
                 }
-                None => Box::new(stdout()) as Box<dyn Write>,
+                None => Box::new(stdout()) as Box<dyn Write + Send>,
             });
+            let writer = Arc::new(Mutex::new(writer));
 
-            call::consensus(&input, &mut writer, duplicates).unwrap();
+            call::consensus(&input, &writer, duplicates, *threads).unwrap();
         }
         None => {}
     }

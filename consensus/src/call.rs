@@ -6,33 +6,51 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{prelude::*, BufWriter};
 use std::io::{Seek, SeekFrom};
+use std::ops::DerefMut;
+use std::sync::{Arc, Mutex};
+
+use rayon::prelude::*;
+use rayon::{self, max_num_threads};
 
 use spoa::{self, AlignmentEngine};
 use std::ffi::{CStr, CString};
 
-pub fn consensus<R: Write>(
+pub fn consensus<R: Write + Send>(
     input: &str,
-    mut writer: &mut R,
+    writer: &Arc<Mutex<R>>,
     duplicates: DuplicateMap,
+    threads: u8,
 ) -> Result<(), Box<dyn Error>> {
+    // set number of threads that Rayon uses
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(threads.into())
+        .build_global()
+        .unwrap();
+
     let mut file = File::open(input)?;
+    let file = Arc::new(Mutex::new(file));
 
-    // these are the SPOA default values with semi-global alignment
-    let mut alignment_engine =
-        spoa::AlignmentEngine::new(spoa::AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
-
-    for (id, positions) in duplicates.iter() {
+    duplicates.par_iter().for_each(|(id, positions)| {
         if positions.len() == 1 {
             // TODO: do something here later
-            continue;
+            return;
         }
+
+        let file = Arc::clone(&file);
+        let mut file_binding = file.lock().unwrap();
+        let mut file = file_binding.deref_mut();
+
+        // these are the SPOA default values with semi-global alignment
+        let mut alignment_engine =
+            spoa::AlignmentEngine::new(spoa::AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
 
         // Construct graph
         let mut poa_graph = spoa::Graph::new();
 
         for pos in positions.iter() {
             let mut record = fastq::Record::new();
-            file.seek(SeekFrom::Start(*pos as u64))?;
+            file.seek(SeekFrom::Start(*pos as u64))
+                .expect("Reading from file should not fail");
 
             let mut reader = fastq::Reader::new(&mut file);
             reader.read(&mut record).unwrap();
@@ -52,12 +70,19 @@ pub fn consensus<R: Write>(
 
             // TODO: if asked, write each read as well
         }
+
+        // free the lock
+        drop(file);
+
         let cons = poa_graph.consensus();
         let consensus_seq = cons
             .to_str()
             .expect("spoa module should produce valid utf-8");
 
-        write!(
+        let writer = Arc::clone(writer);
+        let mut writer = writer.lock().unwrap();
+
+        writeln!(
             writer,
             ">{0}_{1}_CON_{2}\n{3}",
             id.bc,
@@ -65,7 +90,7 @@ pub fn consensus<R: Write>(
             positions.len(),
             consensus_seq
         );
-    }
+    });
 
     return Ok(());
 }
