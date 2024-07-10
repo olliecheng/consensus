@@ -1,20 +1,20 @@
 use crate::duplicates::DuplicateMap;
 use crate::duplicates::RecordIdentifier;
 use bio::io::fastq;
-use bio::io::fastq::{FastqRead, Reader};
-use std::collections::HashMap;
+use bio::io::fastq::{FastqRead};
+
 use std::error::Error;
 use std::fs::File;
-use std::io::{prelude::*, BufWriter};
+use std::io::{prelude::*};
 use std::io::{Seek, SeekFrom};
-use std::ops::DerefMut;
+
 use std::sync::{Arc, Mutex};
 
 use rayon::prelude::*;
-use rayon::{self, max_num_threads};
+use rayon::{self};
 
-use spoa::{self, AlignmentEngine};
-use std::ffi::{CStr, CString};
+use spoa::{self};
+
 
 struct DuplicateRecord {
     id: RecordIdentifier,

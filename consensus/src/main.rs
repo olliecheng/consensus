@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use bio::io::fastq;
+
 use clap::{Parser, Subcommand};
 use serde_json;
 

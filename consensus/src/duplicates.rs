@@ -1,5 +1,5 @@
 use csv::ReaderBuilder;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 
