@@ -27,6 +27,7 @@ pub fn consensus<R: Write + Send>(
     duplicates: DuplicateMap,
     threads: u8,
     duplicates_only: bool,
+    output_originals: bool,
 ) -> Result<(), Box<dyn Error>> {
     // set number of threads that Rayon uses
     rayon::ThreadPoolBuilder::new()
@@ -85,9 +86,32 @@ pub fn consensus<R: Write + Send>(
                     spoa::AlignmentEngine::new(spoa::AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
                 poa_graph = spoa::Graph::new();
 
-                for record in rec.records.iter() {
+                let record_count = rec.records.len();
+
+                let mut existing_reads: Option<String> = if output_originals {
+                    Some(String::new())
+                } else {
+                    None
+                };
+
+                for (index, record) in rec.records.iter().enumerate() {
                     let seq = record.seq();
                     let qual = record.qual();
+
+                    if output_originals {
+                        let s = format!(
+                            ">{0}_{1}_DUP_{2}_of_{3}\n{4}\n",
+                            rec.id.bc,
+                            rec.id.umi,
+                            index + 1,
+                            record_count,
+                            std::str::from_utf8(seq).unwrap()
+                        );
+                        match existing_reads.as_mut() {
+                            Some(x) => x.push_str(&s),
+                            None => {}
+                        }
+                    }
 
                     let align = alignment_engine.align_from_bytes(seq, &poa_graph);
                     poa_graph.add_alignment_from_bytes(&align, seq, &qual);
@@ -101,16 +125,23 @@ pub fn consensus<R: Write + Send>(
                 let writer = Arc::clone(writer);
                 let mut writer = writer.lock().unwrap();
 
+                if output_originals {
+                    // unwrap is fine here, as this is only Some() if output_originals is set
+                    match existing_reads {
+                        Some(s) => {
+                            writer.write_all(s.as_bytes()).unwrap();
+                        }
+                        None => {}
+                    };
+                }
+
                 // this is repeated, but I'm not sure how to pass out
                 // a string slice from the if scope without creating
                 // a borrow checker error.
                 writeln!(
                     writer,
                     ">{0}_{1}_CON_{2}\n{3}",
-                    rec.id.bc,
-                    rec.id.umi,
-                    rec.records.len(),
-                    consensus
+                    rec.id.bc, rec.id.umi, record_count, consensus
                 )
                 .unwrap();
             };

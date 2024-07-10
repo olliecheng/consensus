@@ -65,9 +65,13 @@ enum Commands {
         #[arg(short, long, default_value_t = 4)]
         threads: u8,
 
-        /// should non-duplicate reads be inserted into the output
+        /// only show the duplicated reads, not the single ones
         #[arg(short, long, action)]
         duplicates_only: bool,
+
+        /// for each duplicate group of reads, report the original reads along with the consensus
+        #[arg(short, long, action)]
+        report_original_reads: bool,
     },
 }
 
@@ -87,6 +91,7 @@ fn main() {
             output,
             threads,
             duplicates_only,
+            report_original_reads,
         } => {
             eprintln!("Collecting duplicates... {}", duplicates_only);
             let (duplicates, _statistics) =
@@ -109,7 +114,15 @@ fn main() {
             });
             let writer = Arc::new(Mutex::new(writer));
 
-            call::consensus(&input, &writer, duplicates, *threads, *duplicates_only).unwrap();
+            call::consensus(
+                &input,
+                &writer,
+                duplicates,
+                *threads,
+                *duplicates_only,
+                *report_original_reads,
+            )
+            .unwrap();
         }
         Commands::GenerateIndex { file, index } => {
             generate_index::construct_index(file, index);
