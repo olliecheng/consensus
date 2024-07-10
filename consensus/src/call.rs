@@ -7,6 +7,9 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Seek, SeekFrom};
 
+use spoa::{self, AlignmentEngine};
+use std::ffi::{CStr, CString};
+
 pub fn consensus(
     input: &str,
     output: &str,
@@ -14,26 +17,46 @@ pub fn consensus(
 ) -> Result<(), Box<dyn Error>> {
     let mut file = File::open(input)?;
 
+    // these are the SPOA default values with semi-global alignment
+    let mut alignment_engine =
+        spoa::AlignmentEngine::new(spoa::AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
+
     for (id, positions) in duplicates.iter() {
         if positions.len() == 1 {
             // TODO: do something here later
             continue;
         }
-        let sequences = Vec::<fastq::Record>::new();
 
-        eprintln!("{positions:?}");
+        // Construct graph
+        let mut poa_graph = spoa::Graph::new();
+
         for pos in positions.iter() {
-            let mut buffer = [0; 100];
             let mut record = fastq::Record::new();
             file.seek(SeekFrom::Start(*pos as u64)).unwrap();
-            // file.read_exact(&mut buffer)?;
-
-            // eprintln!("{:?}", String::from_utf8(buffer.to_vec()).unwrap());
 
             let mut reader = fastq::Reader::new(&mut file);
             reader.read(&mut record).unwrap();
-            eprintln!("{}", record.id());
+
+            // seq and qual should both be null terminated before casting to CStr
+            let seq_null_term = [record.seq(), b"\0"].concat();
+            let qual_null_term = [record.qual(), b"\0"].concat();
+
+            // add record to graph
+            let seq =
+                CStr::from_bytes_with_nul(&seq_null_term).expect("Casting to cstr should not fail");
+            let qual = CStr::from_bytes_with_nul(&qual_null_term)
+                .expect("Casting to cstr should not fail");
+
+            let align = alignment_engine.align(seq, &poa_graph);
+            poa_graph.add_alignment(&align, seq, &qual);
+
+            // TODO: if asked, write each read as well
         }
+        let cons = poa_graph.consensus();
+        let consensus_seq = cons
+            .to_str()
+            .expect("spoa module should produce valid utf-8");
+        eprintln!(">{}_{}\n{consensus_seq}", id.bc, id.umi);
         // println!("key: {key:?}, val: {val:?}");
     }
 
