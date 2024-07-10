@@ -26,14 +26,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Generate a summary of duplicate statistics from an index file
-    #[command(arg_required_else_help = true)]
-    Summary {
-        /// the index file
-        #[arg(long)]
-        index: String,
-    },
-
     /// Create an index file from a demultiplexed .fastq, if one doesn't already exist
     #[command(arg_required_else_help = true)]
     GenerateIndex {
@@ -43,6 +35,14 @@ enum Commands {
 
         /// the output index file
         #[arg(long, default_value = "index.tsv")]
+        index: String,
+    },
+
+    /// Generate a summary of duplicate statistics from an index file
+    #[command(arg_required_else_help = true)]
+    Summary {
+        /// the index file
+        #[arg(long)]
         index: String,
     },
 
@@ -57,13 +57,17 @@ enum Commands {
         #[arg(long)]
         input: String,
 
+        /// the output .fasta; note that quality values are not preserved
+        #[arg(long)]
+        output: Option<String>,
+
         /// the number of threads to use
-        #[arg(long, default_value_t = 4)]
+        #[arg(short, long, default_value_t = 4)]
         threads: u8,
 
-        /// the output .fastq
-        #[arg(long, default_value = "called_reads.fastq")]
-        output: Option<String>,
+        /// should non-duplicate reads be inserted into the output
+        #[arg(short, long, action)]
+        duplicates_only: bool,
     },
 }
 
@@ -82,8 +86,9 @@ fn main() {
             input,
             output,
             threads,
+            duplicates_only,
         } => {
-            eprintln!("Collecting duplicates...");
+            eprintln!("Collecting duplicates... {}", duplicates_only);
             let (duplicates, _statistics) =
                 duplicates::get_duplicates(index).expect("Could not parse index.");
             eprintln!("Iterating through individual duplicates");
@@ -104,7 +109,7 @@ fn main() {
             });
             let writer = Arc::new(Mutex::new(writer));
 
-            call::consensus(&input, &writer, duplicates, *threads).unwrap();
+            call::consensus(&input, &writer, duplicates, *threads, *duplicates_only).unwrap();
         }
         Commands::GenerateIndex { file, index } => {
             generate_index::construct_index(file, index);
