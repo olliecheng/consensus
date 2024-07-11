@@ -123,6 +123,14 @@ $ cargo install --git https://github.com/olliecheng/consensus.git
 $ cargo install --path .
 ```
 
+#### Note to HPC users on older systems
+You will need a reasonably modern version of `gcc` and `cmake` installed, and the `CARGO_NET_GIT_FETCH_WITH_CLI` flag enabled. For instance:
+```
+$ module load gcc/latest cmake/latest
+$ CARGO_NET_GIT_FETCH_WITH_CLI="true" cargo install --git https://github.com/olliecheng/consensus.git
+```
+
+
 ### Build
 ```sh
 $ git clone https://github.com/olliecheng/consensus.git
