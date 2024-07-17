@@ -19,15 +19,15 @@ quality...
 ```
 I first create an _index_ file using
 ```sh
-$ consensus generate_index --file sample.fastq --output index.tsv
+$ duplicate-tools generate_index --file sample.fastq --output index.tsv
 ```
 I can view summary statistics about duplicate rates using:
 ```sh
-$ consensus summary --index index.tsv
+$ duplicate-tools summary --index index.tsv
 ```
 and I can also transparently remove duplicate reads using:
 ```sh
-$ consensus call \
+$ duplicate-tools call \
   --index index.tsv \
   --input sample.fastq \
   --output sample_called.fastq \
@@ -39,31 +39,31 @@ which will output all non-duplicated and consensus called reads, removing all th
 ### Help
 
 ```
-$ consensus --help
+$ duplicate-tools --help
 
 tools for consensus calling reads with duplicate barcode and UMI matches
 
-Usage: consensus generate-index [OPTIONS] --file <FILE>
-       consensus summary --index <INDEX>
-       consensus call [OPTIONS] --index <INDEX> --input <INPUT>
-       consensus help [COMMAND]...
+Usage: duplicate-tools generate-index [OPTIONS] --file <FILE>
+       duplicate-tools summary --index <INDEX>
+       duplicate-tools call [OPTIONS] --index <INDEX> --input <INPUT>
+       duplicate-tools help [COMMAND]...
 
 Options:
   -h, --help     Print help
   -V, --version  Print version
 
-consensus generate-index:
+duplicate-tools generate-index:
 Create an index file from a demultiplexed .fastq, if one doesn't already exist
       --file <FILE>    the input .fastq file
       --index <INDEX>  the output index file [default: index.tsv]
   -h, --help           Print help
 
-consensus summary:
+duplicate-tools summary:
 Generate a summary of duplicate statistics from an index file
       --index <INDEX>  the index file
   -h, --help           Print help
 
-consensus call:
+duplicate-tools call:
 Generate a consensus-called 'cleaned up' file
       --index <INDEX>          the index file
       --input <INPUT>          the input .fastq
@@ -120,7 +120,7 @@ You will need a modern version of Rust installed on your machine, as well as the
 
 ### Install to PATH
 ```sh
-$ cargo install --git https://github.com/olliecheng/consensus.git
+$ cargo install --git https://github.com/olliecheng/duplicate-tools.git
 
 # or, from the local path
 $ cargo install --path .
@@ -136,7 +136,7 @@ $ CARGO_NET_GIT_FETCH_WITH_CLI="true" cargo install --git https://github.com/oll
 
 ### Build
 ```sh
-$ git clone https://github.com/olliecheng/consensus.git
+$ git clone https://github.com/olliecheng/duplicate-tools.git
 $ cargo build --release
 ```
-The binary can be found at `/target/release/consensus`.
+The binary can be found at `/target/release/duplicate-tools`.
