@@ -1,10 +1,13 @@
-# Consensus
+# duplicate-tools
 
-When demultiplexing data, duplicates are produced which usually contain many similarities, but also contain conflicting information at certain points. The aim of this project is to create a tool which can quickly consensus call these duplicates.
+When demultiplexing data, duplicates are produced which usually contain many similarities,
+but also contain conflicting information at certain points.
+This project contains tools which can quickly index, manipulate, and consensus call
+ these duplicates.
 
-| [Example](#example) | [Usage](#usage) | [Installation](#installation) |
-|-|-|-|
-
+<div align="center">
+ <a href="#example">Example</a> &nbsp;&nbsp; | &nbsp;&nbsp; <a href="#usage">Usage</a> &nbsp;&nbsp; | &nbsp;&nbsp; <a href="#installation">Installation</a>
+</div>
 
 ## Example
 Say I have a demultiplexed `sample.fastq` file of the following form—for instance, one generated using the [Flexiplex demultiplexer](https://github.com/DavidsonGroup/flexiplex):
