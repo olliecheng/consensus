@@ -35,17 +35,29 @@ $ duplicate-tools call \
 ```
 which will output all non-duplicated and consensus called reads, removing all the original duplicated reads in the process.
 
+I can also choose to pass along groups to the `spoa` program, which should produce similar
+results since `duplicate-tools` uses native bindings to `spoa` for consensus calling:
+```sh
+  # needed since spoa doesn't support standard input
+$ mkfifo /tmp/myfifo.fastq
+$ duplicate-tools group --index $IDX --input $I --output sample-called.fastq \
+	"tee /tmp/myfifo.fastq | spoa /tmp/myfifo.fastq -r 0"
+```
+Of course, this method isn't recommended, as it is slower than using native bindings, and
+offers less functionality (such as the lack of a `--duplicates-only=false` option). However,
+especially for programs which make use of pipes, this can be a good approach to allow
+external consensus calling functionality.
+
 ## Usage
 ### Help
 
 ```
-$ duplicate-tools --help
-
 tools for consensus calling reads with duplicate barcode and UMI matches
 
 Usage: duplicate-tools generate-index [OPTIONS] --file <FILE>
        duplicate-tools summary --index <INDEX>
        duplicate-tools call [OPTIONS] --index <INDEX> --input <INPUT>
+       duplicate-tools group [OPTIONS] --index <INDEX> --input <INPUT> [COMMAND]...
        duplicate-tools help [COMMAND]...
 
 Options:
@@ -72,6 +84,16 @@ Generate a consensus-called 'cleaned up' file
   -d, --duplicates-only        only show the duplicated reads, not the single ones
   -r, --report-original-reads  for each duplicate group of reads, report the original reads along with the consensus
   -h, --help                   Print help
+
+duplicate-tools group:
+'Group' duplicate reads, and pass to downstream applications
+      --index <INDEX>      the index file
+      --input <INPUT>      the input .fastq
+      --output <OUTPUT>    the output location, or default to stdout
+      --shell <SHELL>      the shell used to run the given command [default: bash]
+  -t, --threads <THREADS>  the number of threads to use. this will not guard against race conditions in any downstream applications used. this will effectively set the number of individual processes to launch [default: 1]
+  -h, --help               Print help
+  [COMMAND]...         the command to run. any groups will be passed as .fastq standard input [default: cat]
 ```
 
 
@@ -130,7 +152,7 @@ $ cargo install --path .
 You will need a reasonably modern version of `gcc` and `cmake` installed, and the `CARGO_NET_GIT_FETCH_WITH_CLI` flag enabled. For instance:
 ```
 $ module load gcc/latest cmake/latest
-$ CARGO_NET_GIT_FETCH_WITH_CLI="true" cargo install --git https://github.com/olliecheng/consensus.git
+$ CARGO_NET_GIT_FETCH_WITH_CLI="true" cargo install --git https://github.com/olliecheng/duplicate-tools.git
 ```
 
 
