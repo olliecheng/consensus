@@ -2,12 +2,17 @@ use crate::duplicates::DuplicateMap;
 use crate::duplicates::RecordIdentifier;
 use bio::io::fastq;
 use bio::io::fastq::FastqRead;
+use rayon::ThreadPoolBuildError;
 
 use std;
 use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Seek, SeekFrom};
+use std::process::{Command, Stdio};
+
+// required for writeln! on a string
+use std::fmt::Write as FmtWrite;
 
 use std::sync::{Arc, Mutex};
 
@@ -21,48 +26,63 @@ struct DuplicateRecord {
     records: Vec<fastq::Record>,
 }
 
-pub fn consensus<R: Write + Send>(
+pub fn custom_command(
     input: &str,
-    writer: &Arc<Mutex<R>>,
+    writer: &Arc<Mutex<impl Write + Send>>,
+    duplicates: DuplicateMap,
+    threads: u8,
+    shell: &str,
+    command: &str,
+) -> Result<(), Box<dyn Error>> {
+    set_threads(threads)?;
+
+    iter_duplicates(input, duplicates, true)?
+        .par_bridge()
+        .for_each(|rec| {
+            assert!(rec.records.len() != 1);
+            let mut fastq_str = String::new();
+
+            for record in rec.records.iter() {
+                write!(fastq_str, "{}", record).unwrap();
+            }
+
+            let mut child = Command::new(shell)
+                .args(["-c", command])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("Failed to execute process");
+
+            let mut stdin = child.stdin.take().expect("Failed to open stdin");
+            std::thread::spawn(move || {
+                stdin
+                    .write_all(fastq_str.as_bytes())
+                    .expect("Failed to write to stdin");
+            });
+
+            let output = child.wait_with_output().expect("Failed to read stdout");
+
+            let writer = Arc::clone(writer);
+            let mut writer = writer.lock().unwrap();
+
+            writer
+                .write_all(&output.stdout)
+                .expect("Failed to write to output");
+        });
+    Ok(())
+}
+
+pub fn consensus(
+    input: &str,
+    writer: &Arc<Mutex<impl Write + Send>>,
     duplicates: DuplicateMap,
     threads: u8,
     duplicates_only: bool,
     output_originals: bool,
 ) -> Result<(), Box<dyn Error>> {
-    // set number of threads that Rayon uses
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(threads.into())
-        .build_global()
-        .unwrap();
+    set_threads(threads)?;
 
-    let mut file = File::open(input)?;
-    //let file = Arc::new(Mutex::new(file));
-
-    duplicates
-        .into_iter()
-        // first, read from the file (sequential)
-        .filter_map(|(id, positions)| {
-            // if we choose not to only output duplicates, we can skip over this
-            if (positions.len() == 1) && (duplicates_only) {
-                return None;
-            }
-
-            let mut rec = DuplicateRecord {
-                id,
-                records: Vec::new(),
-            };
-
-            for pos in positions.iter() {
-                let mut record = fastq::Record::new();
-                file.seek(SeekFrom::Start(*pos as u64))
-                    .expect("Reading from file should not fail!");
-
-                let mut reader = fastq::Reader::new(&mut file);
-                reader.read(&mut record).unwrap();
-                rec.records.push(record);
-            }
-            Some(rec)
-        })
+    iter_duplicates(input, duplicates, duplicates_only)?
         // convert this sequential iterator into a parallel one for consensus calling
         .par_bridge()
         .for_each(|rec| {
@@ -148,4 +168,45 @@ pub fn consensus<R: Write + Send>(
         });
 
     return Ok(());
+}
+
+fn set_threads(threads: u8) -> Result<(), ThreadPoolBuildError> {
+    // set number of threads that Rayon uses
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(threads.into())
+        .build_global()
+}
+
+fn iter_duplicates(
+    input: &str,
+    duplicates: DuplicateMap,
+    duplicates_only: bool,
+) -> Result<impl Iterator<Item = DuplicateRecord>, Box<dyn Error>> {
+    let mut file = File::open(input)?;
+
+    Ok(duplicates
+        .into_iter()
+        // first, read from the file (sequential)
+        .filter_map(move |(id, positions)| {
+            // if we choose not to only output duplicates, we can skip over this
+            if (positions.len() == 1) && (duplicates_only) {
+                return None;
+            }
+
+            let mut rec = DuplicateRecord {
+                id,
+                records: Vec::new(),
+            };
+
+            for pos in positions.iter() {
+                let mut record = fastq::Record::new();
+                file.seek(SeekFrom::Start(*pos as u64))
+                    .expect("Reading from file should not fail!");
+
+                let mut reader = fastq::Reader::new(&mut file);
+                reader.read(&mut record).unwrap();
+                rec.records.push(record);
+            }
+            Some(rec)
+        }))
 }

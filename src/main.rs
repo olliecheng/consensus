@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{stdout, BufWriter, Write},
+    io::{prelude::*, stdout, BufWriter},
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -73,6 +73,49 @@ enum Commands {
         #[arg(short, long, action)]
         report_original_reads: bool,
     },
+
+    /// 'Group' duplicate reads, and pass to downstream applications.
+    #[command(arg_required_else_help = true)]
+    Group {
+        /// the index file
+        #[arg(long)]
+        index: String,
+
+        /// the input .fastq
+        #[arg(long)]
+        input: String,
+
+        /// the output location, or default to stdout
+        #[arg(long)]
+        output: Option<String>,
+
+        /// the shell used to run the given command
+        #[arg(long, default_value = "bash")]
+        shell: String,
+
+        /// the number of threads to use. this will not guard against race conditions in any
+        /// downstream applications used. this will effectively set the number of individual
+        /// processes to launch
+        #[arg(short, long, default_value_t = 1)]
+        threads: u8,
+
+        /// the command to run. any groups will be passed as .fastq standard input.
+        #[arg(trailing_var_arg = true, default_value = "cat")]
+        command: Vec<String>,
+    },
+}
+
+fn get_writer(output: &Option<String>) -> Result<Arc<Mutex<impl Write>>, std::io::Error> {
+    // get output as a BufWriter - equal to stdout if None
+    let writer = BufWriter::new(match output {
+        Some(ref x) => {
+            let file = File::create(&Path::new(x))?;
+            Box::new(file) as Box<dyn Write + Send>
+        }
+        None => Box::new(stdout()) as Box<dyn Write + Send>,
+    });
+
+    Ok(Arc::new(Mutex::new(writer)))
 }
 
 fn main() {
@@ -84,6 +127,10 @@ fn main() {
                 duplicates::get_duplicates(index).expect("Could not parse index.");
 
             println!("{}", serde_json::to_string_pretty(&statistics).unwrap());
+        }
+        Commands::GenerateIndex { file, index } => {
+            generate_index::construct_index(file, index);
+            eprintln!("Completed index generation to {index}");
         }
         Commands::Call {
             index,
@@ -98,21 +145,7 @@ fn main() {
                 duplicates::get_duplicates(index).expect("Could not parse index.");
             eprintln!("Iterating through individual duplicates");
 
-            // get output as a BufWriter - equal to stdout if None
-            let writer = BufWriter::new(match output {
-                Some(ref x) => {
-                    let file = match File::create(&Path::new(x)) {
-                        Ok(r) => r,
-                        Err(_) => {
-                            eprintln!("Could not open file {x}");
-                            return;
-                        }
-                    };
-                    Box::new(file) as Box<dyn Write + Send>
-                }
-                None => Box::new(stdout()) as Box<dyn Write + Send>,
-            });
-            let writer = Arc::new(Mutex::new(writer));
+            let writer = get_writer(output).unwrap();
 
             call::consensus(
                 &input,
@@ -124,9 +157,33 @@ fn main() {
             )
             .unwrap();
         }
-        Commands::GenerateIndex { file, index } => {
-            generate_index::construct_index(file, index);
-            eprintln!("Completed index generation to {index}");
+        Commands::Group {
+            index,
+            input,
+            output,
+            threads,
+            shell,
+            command,
+        } => {
+            let command_str = command.join(" ");
+            eprintln!(
+                "Executing `{}` for every group using {}",
+                command_str, shell
+            );
+            eprintln!(
+                "Multithreading is {}",
+                if *threads != 1 { "enabled" } else { "disabled" }
+            );
+
+            eprintln!("Collecting duplicates...");
+            let (duplicates, _statistics) =
+                duplicates::get_duplicates(index).expect("Could not parse index.");
+            eprintln!("Iterating through individual duplicates");
+
+            let writer = get_writer(output).unwrap();
+
+            call::custom_command(&input, &writer, duplicates, *threads, &shell, &command_str)
+                .unwrap();
         }
     }
 }
