@@ -5,9 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Result};
 use clap::{Parser, Subcommand};
-use serde_json;
 
 extern crate env_logger;
 #[macro_use]
@@ -114,7 +113,7 @@ fn get_writer(output: &Option<String>) -> Result<Arc<Mutex<impl Write>>, std::io
     // get output as a BufWriter - equal to stdout if None
     let writer = BufWriter::new(match output {
         Some(ref x) => {
-            let file = File::create(&Path::new(x))?;
+            let file = File::create(Path::new(x))?;
             Box::new(file) as Box<dyn Write + Send>
         }
         None => Box::new(stdout()) as Box<dyn Write + Send>,
@@ -159,7 +158,7 @@ fn try_main() -> Result<()> {
             let writer = get_writer(output).unwrap();
 
             call::consensus(
-                &input,
+                input,
                 &writer,
                 duplicates,
                 *threads,
@@ -192,7 +191,7 @@ fn try_main() -> Result<()> {
 
             let writer = get_writer(output).unwrap();
 
-            call::custom_command(&input, &writer, duplicates, *threads, &shell, &command_str)?;
+            call::custom_command(input, &writer, duplicates, *threads, shell, &command_str)?;
         }
     };
     Ok(())

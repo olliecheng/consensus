@@ -1,9 +1,8 @@
 use csv::ReaderBuilder;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
-use std::error::Error;
 
-use anyhow::{Context, Result};
+use anyhow::{Result};
 
 pub type DuplicateMap = HashMap<RecordIdentifier, Vec<usize>>;
 
@@ -57,9 +56,7 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
     map.shrink_to_fit(); // optimise memory usage
 
     stats.duplicate_ids = 0;
-    stats.duplicate_reads = map
-        .iter()
-        .map(|(_, v)| {
+    stats.duplicate_reads = map.values().map(|v| {
             let length = v.len();
             if length > 1 {
                 stats.duplicate_ids += 1;
@@ -82,5 +79,5 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
 
     stats.proportion_duplicate = stats.duplicate_reads as f64 / stats.total_reads as f64;
 
-    return Ok((map, stats));
+    Ok((map, stats))
 }

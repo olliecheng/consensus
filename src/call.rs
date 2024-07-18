@@ -5,7 +5,6 @@ use bio::io::fastq;
 use bio::io::fastq::FastqRead;
 use spoa::{self};
 
-use std;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Seek, SeekFrom};
@@ -136,14 +135,14 @@ pub fn consensus(
                             record_count,
                             std::str::from_utf8(seq).unwrap()
                         );
-                        match existing_reads.as_mut() {
-                            Some(x) => x.push_str(&s),
-                            None => {}
+
+                        if let Some(x) = existing_reads.as_mut() {
+                            x.push_str(&s)
                         }
                     }
 
                     let align = alignment_engine.align_from_bytes(seq, &poa_graph);
-                    poa_graph.add_alignment_from_bytes(&align, seq, &qual);
+                    poa_graph.add_alignment_from_bytes(&align, seq, qual);
                 }
 
                 let consensus = poa_graph.consensus();
@@ -156,12 +155,9 @@ pub fn consensus(
 
                 if output_originals {
                     // unwrap is fine here, as this is only Some() if output_originals is set
-                    match existing_reads {
-                        Some(s) => {
-                            writer.write_all(s.as_bytes()).unwrap();
-                        }
-                        None => {}
-                    };
+                    if let Some(s) = existing_reads {
+                        writer.write_all(s.as_bytes()).unwrap();
+                    }
                 }
 
                 // this is repeated, but I'm not sure how to pass out
@@ -187,11 +183,11 @@ fn set_threads(threads: u8) -> Result<()> {
         .with_context(|| format!("Unable to set the number of threads to {threads}"))
 }
 
-fn iter_duplicates<'a>(
-    input: &'a str,
+fn iter_duplicates(
+    input: &str,
     duplicates: DuplicateMap,
     duplicates_only: bool,
-) -> Result<impl Iterator<Item = Result<DuplicateRecord>> + 'a> {
+) -> Result<impl Iterator<Item = Result<DuplicateRecord>> + '_> {
     let mut file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
 
     Ok(duplicates

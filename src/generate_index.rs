@@ -9,7 +9,7 @@ fn iter_lines<W: std::io::Write>(mut reader: BufReader<File>, mut wtr: Writer<W>
     let mut count: usize = 0;
 
     // write headers
-    wtr.write_record(&[
+    wtr.write_record([
         "Read",
         "CellBarcode",
         "FlankEditDist",
@@ -38,7 +38,7 @@ fn iter_lines<W: std::io::Write>(mut reader: BufReader<File>, mut wtr: Writer<W>
             let id = &result[(j + 1)..k];
 
             //println!("{}, {}, {}, {}", bc, umi, id, actual_pos);
-            wtr.write_record(&[id, bc, "?", "?", umi, &position.to_string()])
+            wtr.write_record([id, bc, "?", "?", umi, &position.to_string()])
                 .unwrap();
         }
         count += 1;
