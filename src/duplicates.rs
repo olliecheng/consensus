@@ -3,6 +3,8 @@ use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 
+use anyhow::{Context, Result};
+
 pub type DuplicateMap = HashMap<RecordIdentifier, Vec<usize>>;
 
 #[derive(Eq, PartialEq, Hash, Debug)]
@@ -20,7 +22,7 @@ pub struct DuplicateStatistics {
     pub distribution: BTreeMap<usize, usize>,
 }
 
-pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics), Box<dyn Error>> {
+pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)> {
     let mut map = HashMap::<RecordIdentifier, Vec<usize>>::new();
     let mut stats = DuplicateStatistics {
         total_reads: 0,

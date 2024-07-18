@@ -1,25 +1,24 @@
 use crate::duplicates::DuplicateMap;
 use crate::duplicates::RecordIdentifier;
+
 use bio::io::fastq;
 use bio::io::fastq::FastqRead;
-use rayon::ThreadPoolBuildError;
+use spoa::{self};
 
 use std;
-use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Seek, SeekFrom};
 use std::process::{Command, Stdio};
 
-// required for writeln! on a string
-use std::fmt::Write as FmtWrite;
-
-use std::sync::{Arc, Mutex};
-
 use rayon::prelude::*;
 use rayon::{self};
+use std::sync::{Arc, Mutex};
 
-use spoa::{self};
+use anyhow::{Context, Result};
+
+// required for writeln! on a string
+use std::fmt::Write as FmtWrite;
 
 struct DuplicateRecord {
     id: RecordIdentifier,
@@ -33,17 +32,19 @@ pub fn custom_command(
     threads: u8,
     shell: &str,
     command: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     set_threads(threads)?;
+    let mut err = Ok(());
 
     iter_duplicates(input, duplicates, true)?
+        .scan(&mut err, until_err)
         .par_bridge()
         .for_each(|rec| {
             assert!(rec.records.len() != 1);
             let mut fastq_str = String::new();
 
             for record in rec.records.iter() {
-                write!(fastq_str, "{}", record).unwrap();
+                write!(fastq_str, "{}", record).unwrap() //.context("Could not format string")?;
             }
 
             let mut child = Command::new(shell)
@@ -51,10 +52,10 @@ pub fn custom_command(
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .spawn()
-                .expect("Failed to execute process");
+                .expect("Could not execute process");
 
             let mut stdin = child.stdin.take().expect("Failed to open stdin");
-            std::thread::spawn(move || {
+            let thread = std::thread::spawn(move || {
                 stdin
                     .write_all(fastq_str.as_bytes())
                     .expect("Failed to write to stdin");
@@ -62,14 +63,20 @@ pub fn custom_command(
 
             let output = child.wait_with_output().expect("Failed to read stdout");
 
+            let err = thread.join();
+            if let Err(e) = err {
+                std::panic::resume_unwind(e);
+            }
+
             let writer = Arc::clone(writer);
-            let mut writer = writer.lock().unwrap();
+            let mut writer = writer.lock().expect("Could not lock mutex");
 
             writer
                 .write_all(&output.stdout)
-                .expect("Failed to write to output");
+                .expect("Could not write to output");
         });
-    Ok(())
+
+    err
 }
 
 pub fn consensus(
@@ -79,11 +86,13 @@ pub fn consensus(
     threads: u8,
     duplicates_only: bool,
     output_originals: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     set_threads(threads)?;
+    let mut err = Ok(());
 
     iter_duplicates(input, duplicates, duplicates_only)?
         // convert this sequential iterator into a parallel one for consensus calling
+        .scan(&mut err, until_err)
         .par_bridge()
         .for_each(|rec| {
             let single = rec.records.len() == 1;
@@ -167,27 +176,28 @@ pub fn consensus(
             };
         });
 
-    return Ok(());
+    err
 }
 
-fn set_threads(threads: u8) -> Result<(), ThreadPoolBuildError> {
+fn set_threads(threads: u8) -> Result<()> {
     // set number of threads that Rayon uses
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads.into())
         .build_global()
+        .with_context(|| format!("Unable to set the number of threads to {threads}"))
 }
 
-fn iter_duplicates(
-    input: &str,
+fn iter_duplicates<'a>(
+    input: &'a str,
     duplicates: DuplicateMap,
     duplicates_only: bool,
-) -> Result<impl Iterator<Item = DuplicateRecord>, Box<dyn Error>> {
-    let mut file = File::open(input)?;
+) -> Result<impl Iterator<Item = Result<DuplicateRecord>> + 'a> {
+    let mut file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
 
     Ok(duplicates
         .into_iter()
         // first, read from the file (sequential)
-        .filter_map(move |(id, positions)| {
+        .filter_map(move |(id, positions)| -> Option<Result<DuplicateRecord>> {
             // if we choose not to only output duplicates, we can skip over this
             if (positions.len() == 1) && (duplicates_only) {
                 return None;
@@ -200,13 +210,33 @@ fn iter_duplicates(
 
             for pos in positions.iter() {
                 let mut record = fastq::Record::new();
-                file.seek(SeekFrom::Start(*pos as u64))
-                    .expect("Reading from file should not fail!");
+                let err = file.seek(SeekFrom::Start(*pos as u64));
+                if let Err(e) = err {
+                    let context = format!("Unable to seek to file {} at position {}", input, pos);
+                    return Some(Err(anyhow::Error::new(e).context(context)));
+                }
 
                 let mut reader = fastq::Reader::new(&mut file);
-                reader.read(&mut record).unwrap();
+
+                let err = reader.read(&mut record);
+                if let Err(e) = err {
+                    let context = format!("Unable to read from file {} at position {}", input, pos);
+                    return Some(Err(anyhow::Error::new(e).context(context)));
+                }
+
                 rec.records.push(record);
             }
-            Some(rec)
+            Some(Ok(rec))
         }))
+}
+
+/// Utility function to extract the error from an iterator
+fn until_err<T>(err: &mut &mut Result<()>, item: Result<T>) -> Option<T> {
+    match item {
+        Ok(item) => Some(item),
+        Err(e) => {
+            **err = Err(e);
+            None
+        }
+    }
 }

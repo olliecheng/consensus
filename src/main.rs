@@ -5,8 +5,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_json;
+
+extern crate env_logger;
+#[macro_use]
+extern crate log;
 
 mod call;
 mod duplicates;
@@ -118,19 +123,25 @@ fn get_writer(output: &Option<String>) -> Result<Arc<Mutex<impl Write>>, std::io
     Ok(Arc::new(Mutex::new(writer)))
 }
 
-fn main() {
+fn try_main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_target(false)
+        .init();
     let cli = Cli::parse();
 
     match &cli.command {
         Commands::Summary { index } => {
-            let (_, statistics) =
-                duplicates::get_duplicates(index).expect("Could not parse index.");
+            info!("Summarising index at {index}");
+            let (_, statistics) = duplicates::get_duplicates(index)?;
 
-            println!("{}", serde_json::to_string_pretty(&statistics).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&statistics).expect("Should be serialisable")
+            );
         }
         Commands::GenerateIndex { file, index } => {
             generate_index::construct_index(file, index);
-            eprintln!("Completed index generation to {index}");
+            info!("Completed index generation to {index}");
         }
         Commands::Call {
             index,
@@ -140,10 +151,10 @@ fn main() {
             duplicates_only,
             report_original_reads,
         } => {
-            eprintln!("Collecting duplicates... {}", duplicates_only);
+            info!("Collecting duplicates... {}", duplicates_only);
             let (duplicates, _statistics) =
                 duplicates::get_duplicates(index).expect("Could not parse index.");
-            eprintln!("Iterating through individual duplicates");
+            info!("Iterating through individual duplicates");
 
             let writer = get_writer(output).unwrap();
 
@@ -154,8 +165,7 @@ fn main() {
                 *threads,
                 *duplicates_only,
                 *report_original_reads,
-            )
-            .unwrap();
+            )?;
         }
         Commands::Group {
             index,
@@ -166,24 +176,33 @@ fn main() {
             command,
         } => {
             let command_str = command.join(" ");
-            eprintln!(
+            info!(
                 "Executing `{}` for every group using {}",
                 command_str, shell
             );
-            eprintln!(
+            info!(
                 "Multithreading is {}",
                 if *threads != 1 { "enabled" } else { "disabled" }
             );
 
-            eprintln!("Collecting duplicates...");
+            info!("Collecting duplicates...");
             let (duplicates, _statistics) =
                 duplicates::get_duplicates(index).expect("Could not parse index.");
-            eprintln!("Iterating through individual duplicates");
+            info!("Iterating through individual duplicates");
 
             let writer = get_writer(output).unwrap();
 
-            call::custom_command(&input, &writer, duplicates, *threads, &shell, &command_str)
-                .unwrap();
+            call::custom_command(&input, &writer, duplicates, *threads, &shell, &command_str)?;
         }
+    };
+    Ok(())
+}
+
+fn main() {
+    if let Err(err) = try_main() {
+        error!("{}", err);
+        err.chain()
+            .skip(1)
+            .for_each(|cause| error!("  because: {}", cause));
     }
 }
