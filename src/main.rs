@@ -1,3 +1,6 @@
+// disable unused code warnings for dev builds
+#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+
 use std::{
     fs::File,
     io::{prelude::*, stdout, BufWriter},
@@ -5,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 extern crate env_logger;
@@ -15,6 +18,9 @@ extern crate log;
 mod call;
 mod duplicates;
 mod generate_index;
+mod ordered_rayon;
+
+use ordered_rayon::OrderedMapCollect;
 
 #[derive(Parser)]
 #[command(
