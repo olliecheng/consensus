@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 extern crate env_logger;
@@ -13,8 +13,10 @@ extern crate env_logger;
 extern crate log;
 
 mod call;
+mod cluster;
 mod duplicates;
 mod generate_index;
+mod record;
 
 #[derive(Parser)]
 #[command(
@@ -38,13 +40,20 @@ enum Commands {
         file: String,
 
         /// the output index file
-        #[arg(long, default_value = "index.tsv")]
+        #[arg(long, default_value = "index.binc")]
         index: String,
     },
 
     /// Generate a summary of duplicate statistics from an index file
     #[command(arg_required_else_help = true)]
     Summary {
+        /// the index file
+        #[arg(long)]
+        index: String,
+    },
+
+    /// Cluster
+    Cluster {
         /// the index file
         #[arg(long)]
         index: String,
@@ -141,6 +150,10 @@ fn try_main() -> Result<()> {
         Commands::GenerateIndex { file, index } => {
             generate_index::construct_index(file, index);
             info!("Completed index generation to {index}");
+        }
+        Commands::Cluster { index } => {
+            info!("Clustering from {index}");
+            cluster::cluster_from(&index)?;
         }
         Commands::Call {
             index,

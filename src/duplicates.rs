@@ -1,16 +1,11 @@
+use crate::record::RecordIdentifier;
 use csv::ReaderBuilder;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
-use anyhow::{Result};
+use anyhow::Result;
 
 pub type DuplicateMap = HashMap<RecordIdentifier, Vec<usize>>;
-
-#[derive(Eq, PartialEq, Hash, Debug)]
-pub struct RecordIdentifier {
-    pub bc: String,
-    pub umi: String,
-}
 
 #[derive(Serialize, Debug)]
 pub struct DuplicateStatistics {
@@ -22,7 +17,7 @@ pub struct DuplicateStatistics {
 }
 
 pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)> {
-    let mut map = HashMap::<RecordIdentifier, Vec<usize>>::new();
+    let mut map = DuplicateMap::new();
     let mut stats = DuplicateStatistics {
         total_reads: 0,
         duplicate_reads: 0,
@@ -56,7 +51,9 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
     map.shrink_to_fit(); // optimise memory usage
 
     stats.duplicate_ids = 0;
-    stats.duplicate_reads = map.values().map(|v| {
+    stats.duplicate_reads = map
+        .values()
+        .map(|v| {
             let length = v.len();
             if length > 1 {
                 stats.duplicate_ids += 1;

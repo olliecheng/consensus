@@ -1,5 +1,5 @@
 use crate::duplicates::DuplicateMap;
-use crate::duplicates::RecordIdentifier;
+use crate::record::RecordIdentifier;
 
 use bio::io::fastq;
 use bio::io::fastq::FastqRead;
