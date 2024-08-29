@@ -2,6 +2,8 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 
+use crate::rensa;
+
 // use csv::{Writer, WriterBuilder};
 
 use bk_tree::{metrics, BKTree, Metric};

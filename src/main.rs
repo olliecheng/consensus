@@ -1,3 +1,5 @@
+#![ allow( dead_code, unused_imports ) ]
+
 use std::{
     fs::File,
     io::{prelude::*, stdout, BufWriter},
@@ -8,6 +10,7 @@ use std::{
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+
 extern crate env_logger;
 #[macro_use]
 extern crate log;
@@ -17,6 +20,8 @@ mod cluster;
 mod duplicates;
 mod generate_index;
 mod record;
+
+mod rensa;
 
 #[derive(Parser)]
 #[command(
