@@ -14,5 +14,4 @@ pub struct Record {
     pub id: RecordIdentifier,
     pub read_id: String,
     pub loc: usize,
-    pub minhash: BTreeSet<u32>,
 }

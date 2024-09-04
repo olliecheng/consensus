@@ -19,34 +19,6 @@ fn max_thresh(v: u32, thresh: u32) -> u32 {
     return v;
 }
 
-impl Metric<&Record> for RecordDist {
-    fn distance(&self, a: &&Record, b: &&Record) -> u32 {
-        // out of 20, where 0 is the closest / exact match
-        let jaccard: u32 =
-            (unsafe { 20_usize.unchecked_sub(a.minhash.intersection(&b.minhash).count()) })
-                .try_into()
-                .unwrap();
-
-        return jaccard;
-        // if a.id.bc.as_bytes().len() != b.id.bc.as_bytes().len() {
-        //     println!("a: {:?}, b: {:?}", a.id, b.id);
-        // }
-        max_thresh(jaccard, 6)
-            + max_thresh(hamming(a.id.bc.as_bytes(), b.id.bc.as_bytes()), 2)
-            + max_thresh(hamming(a.id.umi.as_bytes(), b.id.umi.as_bytes()), 2)
-    }
-
-    fn threshold_distance(&self, a: &&Record, b: &&Record, threshold: u32) -> Option<u32> {
-        let v = self.distance(a, b);
-
-        if v <= threshold {
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
-
 pub fn cluster_from(index: &str) -> Result<()> {
     let records: Vec<Record> = bincode::deserialize_from(std::fs::File::open(index)?)?;
     info!("Done retreiving records");

@@ -1,4 +1,4 @@
-#![ allow( dead_code, unused_imports ) ]
+#![allow(dead_code, unused_imports)]
 
 use std::{
     fs::File,
@@ -20,8 +20,8 @@ mod cluster;
 mod duplicates;
 mod generate_index;
 mod record;
-
-mod rensa;
+mod kmer;
+mod hash;
 
 #[derive(Parser)]
 #[command(
@@ -147,10 +147,10 @@ fn try_main() -> Result<()> {
             info!("Summarising index at {index}");
             let (_, statistics) = duplicates::get_duplicates(index)?;
 
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&statistics).expect("Should be serialisable")
-            );
+            // println!(
+            //     "{}",
+            //     serde_json::to_string_pretty(&statistics).expect("Should be serialisable")
+            // );
         }
         Commands::GenerateIndex { file, index } => {
             generate_index::construct_index(file, index);

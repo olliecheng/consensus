@@ -2,7 +2,10 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 
-use crate::rensa;
+use rand::Rng;
+
+use lsh_rs::prelude::*;
+
 
 // use csv::{Writer, WriterBuilder};
 
@@ -12,10 +15,16 @@ use triple_accel::hamming;
 use itertools::Itertools;
 use murmur3::murmur3_32;
 use std::io::Cursor;
-
+use serde::{Deserialize, Serialize};
 use crate::record::Record;
 
 pub struct Hamming;
+
+#[derive(Serialize, Deserialize)]
+pub struct Index {
+    pub records: Vec<Record>,
+    pub lsh: crate::hash::MinHashLSH,
+}
 
 impl<K: AsRef<str> + ?Sized> Metric<K> for Hamming {
     fn distance(&self, a: &K, b: &K) -> u32 {
@@ -38,28 +47,18 @@ impl<K: AsRef<str> + ?Sized> Metric<K> for Hamming {
     }
 }
 
-fn iter_lines<W: std::io::Write>(mut reader: BufReader<File>, mut wtr: W) {
+fn iter_lines<W: Write>(mut reader: BufReader<File>, mut wtr: W) {
     let mut position: usize = 0;
     let mut count: usize = 0;
 
-    // write headers
-    // wtr.write_record([
-    //     "Read",
-    //     "CellBarcode",
-    //     "FlankEditDist",
-    //     "BarcodeEditDist",
-    //     "UMI",
-    //     "Position",
-    //     "MinHash",
-    // ])
-    // .unwrap();
-
     let mut result = String::new();
-
-    // let mut tree: BKTree<String> = BKTree::new(metrics::Levenshtein);
-    let mut tree: BKTree<String, Hamming> = BKTree::new(Hamming);
-
     let mut records = vec![Record::default()];
+
+    let subseq_size = 50;
+    let shingle_size = 8;
+    let dim = subseq_size - shingle_size + 1;
+
+    let mut lsh = crate::hash::MinHashLSH::new(10, 20, dim);
 
     while let Ok(bsize) = reader.read_line(&mut result) {
         if bsize == 0 {
@@ -80,81 +79,69 @@ fn iter_lines<W: std::io::Write>(mut reader: BufReader<File>, mut wtr: W) {
             let umi = &result[(i + 1)..j];
             let id = &result[(j + 1)..k];
 
-            record.id.bc = String::from(bc);
-            record.id.umi = String::from(umi);
-            record.read_id = String::from(id);
-            record.loc = position;
+            let id_obj = crate::record::RecordIdentifier {
+                bc: String::from(bc),
+                umi: String::from(umi),
+            };
 
-            // let record = [id, bc, "?", "?", umi, String::from(position)];
-            // wtr.write_field(id).unwrap();
-            // wtr.write_field(bc).unwrap();
-            // wtr.write_field("?").unwrap();
-            // wtr.write_field("?").unwrap();
-            // wtr.write_field(umi).unwrap();
-            // wtr.write_field(&position.to_string()).unwrap();
+            let rec = crate::record::Record {
+                id: id_obj,
+                read_id: String::from(id),
+                loc: position,
+            };
 
-            let mut id_str = String::from(bc);
-            id_str.push_str("_");
-            id_str.push_str(umi);
-            // tree.add(id_str);
+            records.push(rec);
         } else if count % 4 == 1 {
-            let bytes = result.as_bytes();
-            let heap_size = 20;
-            let max_size = 100;
-
-            if bytes.len() > 20 {
-                let heap = &mut records.last_mut().unwrap().minhash;
-
-                // this is the sequence itself!
-                // first, we take the front 100 characters, and take a rolling window
-                let size = 5;
-                let length = std::cmp::min(bytes.len(), 100);
-                // let windows = bytes[0..length].windows(size);
-
-                let windows = (5..10).map(|size| bytes[0..length].windows(size)).flatten();
-
-                windows
-                    .map(|x| murmur3_32(&mut Cursor::new(x), 123).unwrap())
-                    .for_each(|x| {
-                        if !heap.contains(&x) {
-                            if heap.len() < heap_size {
-                                heap.insert(x);
-                            } else if let Some(&top) = heap.last() {
-                                if x < top {
-                                    heap.pop_last();
-                                    heap.insert(x);
-                                }
-                            }
-                        }
-                    });
-
-                // println!("Heap: {:?}", heap);
-                // let min_n = &hashes[0..10];
-
-                // wtr.write_field(heap.into_iter().map(|x| x.to_string()).join(","))
-                //     .unwrap();
-            } else {
-                // wtr.write_field("too_small");
+            let bytes = result.as_bytes().to_vec();
+            if bytes.len() > subseq_size {
+                let subset = &bytes[..subseq_size];
+                lsh.store(subset, records.len() - 1);
             }
-            // wtr.write_record(None::<&[u8]>).unwrap();
-            records.push(Record::default());
         }
+
+        // report progress
+        if count % 1000 == 0 {
+            println!("Progress: {count}");
+        }
+
         count += 1;
         position += bsize;
 
         // reset string
         result.clear();
     }
-    // wtr.flush().unwrap();
 
-    println!("Completed tree addition");
-    println!(
-        "{:?}",
-        tree.find("TCTGGCTCATTCTCCG_GCAGCGAAGCCC", 10)
-            .collect::<Vec<_>>()
-    );
+    {
+        // print summary statistics
+        println!("Statistics: ");
+        for table in lsh.hash_tables {
+            println!("Table: avg");
+            print_with_3_digits(
+                table.values().map(|x| x.len()).sum(),
+                table.len(),
+            )
+        }
+    }
 
-    bincode::serialize_into(wtr, &records).unwrap();
+    let index = Index {
+        records,
+        lsh,
+    };
+
+    // dump LSH
+    bincode::serialize_into(wtr, &index).unwrap();
+}
+
+
+fn print_with_3_digits(a: usize, b: usize) {
+    let a_mul = (a as u128) * 1000;
+    let b = b as u128;
+    let div = a_mul / b;
+
+    let frac = div % 1000;
+    let rest = div / 1000;
+
+    println!("{}.{:#03}", rest, frac);
 }
 
 pub fn construct_index(infile: &str, outfile: &str) {
