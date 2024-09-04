@@ -24,6 +24,7 @@ spoa = { git = "https://github.com/olliecheng/spoa-rs" }
 triple_accel = "0.4.0"
 num-traits = "0.2.19"
 gxhash = "3.4.1"
+needletail = "0.5.1"
 
 [[bin]]
 name = "duplicate-tools"

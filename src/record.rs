@@ -12,6 +12,8 @@ pub struct RecordIdentifier {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
 pub struct Record {
     pub id: RecordIdentifier,
-    pub read_id: String,
+    pub read_id: Vec<u8>,
     pub loc: usize,
+    pub avg_qual: f64,
+    pub qual: Vec<u8>,
 }
