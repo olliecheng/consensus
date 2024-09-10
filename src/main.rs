@@ -18,7 +18,7 @@ extern crate log;
 mod call;
 mod cluster;
 mod duplicates;
-mod generate_index;
+mod index;
 mod record;
 mod kmer;
 mod hash;
@@ -145,7 +145,7 @@ fn try_main() -> Result<()> {
     match &cli.command {
         Commands::Summary { index } => {
             info!("Summarising index at {index}");
-            let (_, statistics) = duplicates::get_duplicates(index)?;
+            let (_, _statistics) = duplicates::get_duplicates(index)?;
 
             // println!(
             //     "{}",
@@ -153,7 +153,7 @@ fn try_main() -> Result<()> {
             // );
         }
         Commands::GenerateIndex { file, index } => {
-            generate_index::construct_index(file, index);
+            index::construct_index(file, index);
             info!("Completed index generation to {index}");
         }
         Commands::Cluster { index } => {

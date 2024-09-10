@@ -16,6 +16,7 @@ use crate::record::Record;
 #[derive(Serialize, Deserialize)]
 pub struct Index {
     pub records: Vec<Record>,
+    pub sorted_indices: Vec<usize>,
     pub lsh: crate::hash::MinHashLSH,
 }
 
@@ -26,7 +27,7 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     let subseq_size = 100;
     let shingle_size = 8;
     let dim = subseq_size - shingle_size + 1;
-    let mut lsh = crate::hash::MinHashLSH::new(8, 10, dim);
+    let mut lsh = crate::hash::MinHashLSH::new(8, 30, dim);
 
     loop {
         let position = fastq_reader.position().byte() as usize;
@@ -36,8 +37,8 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
 
             let id = rec.id();
             let id_obj = crate::record::RecordIdentifier {
-                bc: String::from_utf8((&id[1..18]).to_vec()).unwrap(),
-                umi: String::from_utf8((&id[18..31]).to_vec()).unwrap(),
+                bc: String::from_utf8((&id[0..16]).to_vec()).unwrap(),
+                umi: String::from_utf8((&id[17..29]).to_vec()).unwrap(),
             };
 
             let qual = rec.qual().expect(".fastq must have quality");
@@ -48,20 +49,19 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
             );
             let seq = rec.raw_seq();
 
-            let rec_elem = Record {
+            let mut rec_elem = Record {
                 id: id_obj,
-                read_id: Vec::from(seq),
                 loc: position,
                 avg_qual,
-                qual: Vec::from(rec.qual().expect(".fastq must have quality")),
+                hash: None,
             };
-
-            records.push(rec_elem);
 
             if seq.len() > subseq_size {
                 let subset = &seq[..subseq_size];
-                lsh.store(subset, records.len() - 1);
+                rec_elem.hash = Some(lsh.store(subset, records.len()));
             }
+
+            records.push(rec_elem);
         } else {
             break;
         }
@@ -70,16 +70,29 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     {
         // print summary statistics
         println!("Hash table statistics: ");
-        for table in lsh.hash_tables {
+        for table in &lsh.hash_tables {
             println!("Table: avg {} / {}", table.values().map(|x| x.len()).sum::<usize>(), table.len());
         }
     }
 
+    info!("Sorting");
+    let mut sorted_indices = (0..records.len()).collect_vec();
+
+    sorted_indices.sort_unstable_by(|a, b| {
+        let qual_a = records[*a].avg_qual;
+        let qual_b = records[*b].avg_qual;
+        qual_a.partial_cmp(&qual_b)
+            .unwrap()
+            .reverse()
+    });
+
     let index = Index {
         records,
+        sorted_indices,
         lsh,
     };
 
+    info!("Saving index...");
     // dump LSH
     bincode::serialize_into(wtr, &index).unwrap();
 }
