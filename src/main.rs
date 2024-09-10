@@ -1,3 +1,6 @@
+// disable unused code warnings for dev builds
+#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+
 use std::{
     fs::File,
     io::{prelude::*, stdout, BufWriter},
@@ -5,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 extern crate env_logger;
@@ -15,6 +18,7 @@ extern crate log;
 mod call;
 mod duplicates;
 mod generate_index;
+// mod ordered_rayon;
 
 #[derive(Parser)]
 #[command(
@@ -67,7 +71,7 @@ enum Commands {
 
         /// the number of threads to use
         #[arg(short, long, default_value_t = 4)]
-        threads: u8,
+        threads: usize,
 
         /// only show the duplicated reads, not the single ones
         #[arg(short, long, action)]
@@ -101,7 +105,7 @@ enum Commands {
         /// downstream applications used. this will effectively set the number of individual
         /// processes to launch
         #[arg(short, long, default_value_t = 1)]
-        threads: u8,
+        threads: usize,
 
         /// the command to run. any groups will be passed as .fastq standard input.
         #[arg(trailing_var_arg = true, default_value = "cat")]
