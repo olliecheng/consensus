@@ -3,7 +3,7 @@ use crate::duplicates::RecordIdentifier;
 
 use bio::io::fastq;
 use bio::io::fastq::FastqRead;
-use spoa::AlignmentEngine;
+use spoa::{AlignmentEngine, AlignmentType};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -109,19 +109,14 @@ pub fn custom_command(
         err
     });
 
-    match scope_obj {
-        Ok(v) => v,
-        Err(e) => {
-            error!("Caught a panic which is unrecoverable");
-            std::panic::resume_unwind(e)
-        }
-    }
+    scope_obj.unwrap_or_else(|e| {
+        error!("Caught a panic which is unrecoverable");
+        std::panic::resume_unwind(e)
+    })
 }
 
-unsafe impl Send for AlignmentEngine {}
-
 pub fn consensus(
-    input: &'static str,
+    input: &str,
     writer: &Arc<Mutex<impl Write + Send>>,
     duplicates: DuplicateMap,
     threads: usize,
@@ -131,10 +126,7 @@ pub fn consensus(
     let mut err = Ok(());
     let cache_size = threads * 3;
 
-    let mut alignment_engine =
-        spoa::AlignmentEngine::new(spoa::AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
-
-    crossbeam::thread::scope(|s| -> Result<()> {
+    let result = crossbeam::thread::scope(|s| -> Result<()> {
         let duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?;
 
         duplicate_iterator
@@ -152,6 +144,8 @@ pub fn consensus(
 
                         format!(">{0}_{1}_SIN\n{2}", rec.id.bc, rec.id.umi, consensus)
                     } else {
+                        let mut alignment_engine =
+                            AlignmentEngine::new(AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
                         let mut output = String::new();
                         poa_graph = spoa::Graph::new();
 
@@ -171,7 +165,7 @@ pub fn consensus(
                                     record_count,
                                     std::str::from_utf8(seq).unwrap()
                                 )
-                                .expect("string writing should not fail");
+                                    .expect("string writing should not fail");
                             }
 
                             let align = alignment_engine.align_from_bytes(seq, &poa_graph);
@@ -188,7 +182,7 @@ pub fn consensus(
                             ">{0}_{1}_CON_{2}\n{3}",
                             rec.id.bc, rec.id.umi, record_count, consensus
                         )
-                        .expect("string writing should not fail");
+                            .expect("string writing should not fail");
                         output
                     }
                 },
@@ -202,6 +196,10 @@ pub fn consensus(
         Ok(())
     });
 
+    result.unwrap_or_else(|e| {
+        error!("Caught a panic which is unrecoverable");
+        std::panic::resume_unwind(e)
+    })?;
     err
 }
 
@@ -217,7 +215,7 @@ fn iter_duplicates(
     input: &str,
     duplicates: DuplicateMap,
     duplicates_only: bool,
-) -> Result<impl Iterator<Item = Result<DuplicateRecord>> + '_> {
+) -> Result<impl Iterator<Item=Result<DuplicateRecord>> + '_> {
     let mut file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
 
     Ok(duplicates
