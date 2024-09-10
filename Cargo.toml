@@ -1,5 +1,5 @@
 [package]
-name = "duplicate-tools"
+name = "nailpolish"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,4 +16,4 @@ serde_json = "1.0.118"
 spoa = { git = "https://github.com/olliecheng/spoa-rs" }
 
 [[bin]]
-name = "duplicate-tools"
+name = "nailpolish"

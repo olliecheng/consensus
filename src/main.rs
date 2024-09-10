@@ -16,10 +16,18 @@ mod call;
 mod duplicates;
 mod generate_index;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const INFO_STRING: &str = "
+💅 nailpolish version ";
+const AFTER_STRING: &str = "
+   ──────────────────────────────────
+   tools for consensus calling barcode and UMI duplicates
+   https://github.com/olliecheng/nailpolish";
+
 #[derive(Parser)]
 #[command(
-    version = "0.1.0",
-    about = "tools for consensus calling reads with duplicate barcode and UMI matches",
+    version = VERSION,
+    about = format!("{}{}{}", INFO_STRING, VERSION, AFTER_STRING),
     arg_required_else_help = true,
     flatten_help = true
 )]
@@ -127,6 +135,8 @@ fn try_main() -> Result<()> {
         .format_target(false)
         .init();
     let cli = Cli::parse();
+
+    info!("nailpolish v{VERSION}");
 
     match &cli.command {
         Commands::Summary { index } => {
