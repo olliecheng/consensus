@@ -1,4 +1,4 @@
-# duplicate-tools
+# 💅 nailpolish
 
 When demultiplexing data, duplicates are produced which usually contain many similarities,
 but also contain conflicting information at certain points.
