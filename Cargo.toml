@@ -19,3 +19,7 @@ spoa = { git = "https://github.com/olliecheng/spoa-rs" }
 
 [[bin]]
 name = "nailpolish"
+
+[workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
+# use CentOS7-compatible builder (supports libc 2.17)
+image = "ghcr.io/olliecheng/images:cross-x86-centos"
