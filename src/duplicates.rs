@@ -1,6 +1,6 @@
 use csv::ReaderBuilder;
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use anyhow::{Result};
 use indexmap::IndexMap;

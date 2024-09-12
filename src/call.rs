@@ -8,10 +8,7 @@ use spoa::{AlignmentEngine, AlignmentType};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Seek, SeekFrom};
-use std::process::Output;
 use std::process::{Command, Stdio};
-
-use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Context, Result};
 
@@ -194,14 +191,6 @@ pub fn consensus(
         std::panic::resume_unwind(e)
     })?;
     err
-}
-
-fn set_threads(threads: u8) -> Result<()> {
-    // set number of threads that Rayon uses
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(threads.into())
-        .build_global()
-        .with_context(|| format!("Unable to set the number of threads to {threads}"))
 }
 
 fn iter_duplicates(
