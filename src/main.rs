@@ -10,6 +10,7 @@ use std::{
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use clap::builder::styling::{Styles, AnsiColor};
 
 extern crate env_logger;
 #[macro_use]
@@ -28,12 +29,20 @@ const AFTER_STRING: &str = "
    tools for consensus calling barcode and UMI duplicates
    https://github.com/olliecheng/nailpolish";
 
+// colouring of the help
+const STYLES: Styles = Styles::styled()
+    .header(AnsiColor::Yellow.on_default().bold())
+    .usage(AnsiColor::BrightMagenta.on_default().bold())
+    .literal(AnsiColor::BrightMagenta.on_default())
+    .placeholder(AnsiColor::White.on_default());
+
 #[derive(Parser)]
 #[command(
     version = VERSION,
     about = format!("{}{}{}", INFO_STRING, VERSION, AFTER_STRING),
     arg_required_else_help = true,
-    flatten_help = true
+    flatten_help = true,
+    styles = STYLES
 )]
 struct Cli {
     #[command(subcommand)]
@@ -138,9 +147,10 @@ fn try_main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_target(false)
         .init();
+
     let cli = Cli::parse();
 
-    info!("nailpolish v{VERSION}");
+    println!("nailpolish v{VERSION}");
 
     match &cli.command {
         Commands::Summary { index } => {
