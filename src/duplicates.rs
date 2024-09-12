@@ -3,8 +3,9 @@ use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Result};
+use indexmap::IndexMap;
 
-pub type DuplicateMap = HashMap<RecordIdentifier, Vec<usize>>;
+pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<usize>>;
 
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct RecordIdentifier {
@@ -22,7 +23,7 @@ pub struct DuplicateStatistics {
 }
 
 pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)> {
-    let mut map = HashMap::<RecordIdentifier, Vec<usize>>::new();
+    let mut map = IndexMap::<RecordIdentifier, Vec<usize>>::new();
     let mut stats = DuplicateStatistics {
         total_reads: 0,
         duplicate_reads: 0,
@@ -57,20 +58,20 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
 
     stats.duplicate_ids = 0;
     stats.duplicate_reads = map.values().map(|v| {
-            let length = v.len();
-            if length > 1 {
-                stats.duplicate_ids += 1;
+        let length = v.len();
+        if length > 1 {
+            stats.duplicate_ids += 1;
 
-                if let Some(x) = stats.distribution.get_mut(&length) {
-                    *x += 1
-                } else {
-                    stats.distribution.insert(length, 1);
-                }
-                length
+            if let Some(x) = stats.distribution.get_mut(&length) {
+                *x += 1
             } else {
-                0
+                stats.distribution.insert(length, 1);
             }
-        })
+            length
+        } else {
+            0
+        }
+    })
         .sum();
 
     stats

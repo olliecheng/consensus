@@ -189,6 +189,8 @@ fn try_main() -> Result<()> {
                 *duplicates_only,
                 *report_original_reads,
             )?;
+
+            info!("Completed successfully.")
         }
         Commands::Group {
             index,

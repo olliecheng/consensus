@@ -11,8 +11,6 @@ use std::io::{Seek, SeekFrom};
 use std::process::Output;
 use std::process::{Command, Stdio};
 
-use rayon::prelude::*;
-use rayon::{self};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Context, Result};
@@ -90,7 +88,7 @@ pub fn custom_command(
                     // propagate errors
                     let rec = rec?;
 
-                    assert!(rec.records.len() != 1);
+                    assert_ne!(rec.records.len(), 1);
                     let mut fastq_str = String::new();
 
                     for record in rec.records.iter() {
@@ -142,11 +140,13 @@ pub fn consensus(
                     if single {
                         let consensus = std::str::from_utf8(rec.records[0].seq()).unwrap();
 
-                        format!(">{0}_{1}_SIN\n{2}", rec.id.bc, rec.id.umi, consensus)
+                        format!(">{0}_{1}_SIN\n{2}\n", rec.id.bc, rec.id.umi, consensus)
                     } else {
+                        let mut output = String::new();
+
+                        // TODO: find a way to move this outside of the parallel map
                         let mut alignment_engine =
                             AlignmentEngine::new(AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
-                        let mut output = String::new();
                         poa_graph = spoa::Graph::new();
 
                         let record_count = rec.records.len();
@@ -177,12 +177,13 @@ pub fn consensus(
                             .to_str()
                             .expect("spoa module should produce valid utf-8");
 
-                        write!(
+                        writeln!(
                             output,
                             ">{0}_{1}_CON_{2}\n{3}",
                             rec.id.bc, rec.id.umi, record_count, consensus
                         )
                             .expect("string writing should not fail");
+
                         output
                     }
                 },
