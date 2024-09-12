@@ -1,31 +1,42 @@
 # 💅 nailpolish
 
+[![Build status](https://github.com/olliecheng/nailpolish/actions/workflows/build.yml/badge.svg)](https://github.com/olliecheng/nailpolish/actions/workflows/build.yml) ![Static Badge](https://img.shields.io/badge/libc-%E2%89%A5%202.17-blue)
+
 When demultiplexing data, duplicates are produced which usually contain many similarities,
 but also contain conflicting information at certain points.
 This project contains tools which can quickly index, manipulate, and consensus call
- these duplicates.
+these duplicates.
 
 <div align="center">
  <a href="#example">Example</a> &nbsp;&nbsp; | &nbsp;&nbsp; <a href="#usage">Usage</a> &nbsp;&nbsp; | &nbsp;&nbsp; <a href="#installation">Installation</a>
 </div>
 
 ## Example
-Say I have a demultiplexed `sample.fastq` file of the following form—for instance, one generated using the [Flexiplex demultiplexer](https://github.com/DavidsonGroup/flexiplex):
+
+Say I have a demultiplexed `sample.fastq` file of the following form—for instance, one generated using
+the [Flexiplex demultiplexer](https://github.com/DavidsonGroup/flexiplex):
+
 ```
 @BC1_UMI1
 sequence...
 +
 quality...
 ```
+
 I first create an _index_ file using
+
 ```sh
 $ duplicate-tools generate_index --file sample.fastq --output index.tsv
 ```
+
 I can view summary statistics about duplicate rates using:
+
 ```sh
 $ duplicate-tools summary --index index.tsv
 ```
+
 and I can also transparently remove duplicate reads using:
+
 ```sh
 $ duplicate-tools call \
   --index index.tsv \
@@ -33,22 +44,27 @@ $ duplicate-tools call \
   --output sample_called.fastq \
   --threads 4
 ```
-which will output all non-duplicated and consensus called reads, removing all the original duplicated reads in the process.
+
+which will output all non-duplicated and consensus called reads, removing all the original duplicated reads in the
+process.
 
 I can also choose to pass along groups to the `spoa` program, which should produce similar
 results since `duplicate-tools` uses native bindings to `spoa` for consensus calling:
+
 ```sh
   # needed since spoa doesn't support standard input
 $ mkfifo /tmp/myfifo.fastq
 $ duplicate-tools group --index $IDX --input $I --output sample-called.fastq \
 	"tee /tmp/myfifo.fastq | spoa /tmp/myfifo.fastq -r 0"
 ```
+
 Of course, this method isn't recommended, as it is slower than using native bindings, and
 offers less functionality (such as the lack of a `--duplicates-only=false` option). However,
 especially for programs which make use of pipes, this can be a good approach to allow
 external consensus calling functionality.
 
 ## Usage
+
 ### Help
 
 ```
@@ -96,7 +112,6 @@ duplicate-tools group:
   [COMMAND]...         the command to run. any groups will be passed as .fastq standard input [default: cat]
 ```
 
-
 <details>
 <summary>Example of <code>--duplicates-only</code> and <code>--report-original-reads</code></summary>
 Suppose I have a demultiplexed read file of the following format (so that <code>seq2</code> and <code>seq3</code> are duplicates):
@@ -136,11 +151,13 @@ Then, the effects of the following flags are:
 </pre>
 </details>
 
-
 ## Installation
-You will need a modern version of Rust installed on your machine, as well as the Cargo package manager. That's it - all package installations will be done automatically at the build stage.
+
+You will need a modern version of Rust installed on your machine, as well as the Cargo package manager. That's it - all
+package installations will be done automatically at the build stage.
 
 ### Install to PATH
+
 ```sh
 $ cargo install --git https://github.com/olliecheng/duplicate-tools.git
 
@@ -149,16 +166,20 @@ $ cargo install --path .
 ```
 
 #### Note to HPC users on older systems
-You will need a reasonably modern version of `gcc` and `cmake` installed, and the `CARGO_NET_GIT_FETCH_WITH_CLI` flag enabled. For instance:
+
+You will need a reasonably modern version of `gcc` and `cmake` installed, and the `CARGO_NET_GIT_FETCH_WITH_CLI` flag
+enabled. For instance:
+
 ```
 $ module load gcc/latest cmake/latest
 $ CARGO_NET_GIT_FETCH_WITH_CLI="true" cargo install --git https://github.com/olliecheng/duplicate-tools.git
 ```
 
-
 ### Build
+
 ```sh
 $ git clone https://github.com/olliecheng/duplicate-tools.git
 $ cargo build --release
 ```
+
 The binary can be found at `/target/release/duplicate-tools`.
