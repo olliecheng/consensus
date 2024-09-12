@@ -130,7 +130,7 @@ enum Commands {
     },
 }
 
-fn get_writer(output: &Option<String>) -> Result<Arc<Mutex<impl Write>>, std::io::Error> {
+fn get_writer(output: &Option<String>) -> Result<impl Write> {
     // get output as a BufWriter - equal to stdout if None
     let writer = BufWriter::new(match output {
         Some(ref x) => {
@@ -139,8 +139,7 @@ fn get_writer(output: &Option<String>) -> Result<Arc<Mutex<impl Write>>, std::io
         }
         None => Box::new(stdout()) as Box<dyn Write + Send>,
     });
-
-    Ok(Arc::new(Mutex::new(writer)))
+    Ok(writer)
 }
 
 fn try_main() -> Result<()> {
@@ -179,11 +178,11 @@ fn try_main() -> Result<()> {
                 duplicates::get_duplicates(index).expect("Could not parse index.");
             info!("Iterating through individual duplicates");
 
-            let writer = get_writer(output).unwrap();
+            let mut writer = get_writer(output)?;
 
             call::consensus(
                 input,
-                &writer,
+                &mut writer,
                 duplicates,
                 *threads,
                 *duplicates_only,
@@ -215,9 +214,9 @@ fn try_main() -> Result<()> {
                 duplicates::get_duplicates(index).expect("Could not parse index.");
             info!("Iterating through individual duplicates");
 
-            let writer = get_writer(output).unwrap();
+            let mut writer = get_writer(output)?;
 
-            call::custom_command(input, &writer, duplicates, *threads, shell, &command_str)?;
+            call::custom_command(input, &mut writer, duplicates, *threads, shell, &command_str)?;
         }
     };
     Ok(())

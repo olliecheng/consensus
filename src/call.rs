@@ -63,18 +63,13 @@ fn run_command(stdin: &str, shell: &str, command: &str) -> Result<Vec<u8>> {
 
 pub fn custom_command(
     input: &str,
-    writer: &Arc<Mutex<impl Write + Send>>,
+    writer: &mut impl Write,
     duplicates: DuplicateMap,
     threads: usize,
     shell: &str,
     command: &str,
 ) -> Result<()> {
     let cache_size = threads * 3;
-
-    let writer = Arc::clone(writer);
-
-    // in general, it should be OK to unwrap a .lock() result
-    let mut writer = writer.lock().expect("Could not lock mutex");
 
     let scope_obj = crossbeam::thread::scope(|scope| -> Result<()> {
         // this will store any errors
@@ -115,7 +110,7 @@ pub fn custom_command(
 
 pub fn consensus(
     input: &str,
-    writer: &Arc<Mutex<impl Write + Send>>,
+    writer: &mut impl Write,
     duplicates: DuplicateMap,
     threads: usize,
     duplicates_only: bool,
@@ -189,9 +184,6 @@ pub fn consensus(
                 },
             )
             .for_each(|output| {
-                let writer = Arc::clone(writer);
-                let mut writer = writer.lock().unwrap();
-
                 writer.write_all(output.as_bytes()).unwrap();
             });
         Ok(())
