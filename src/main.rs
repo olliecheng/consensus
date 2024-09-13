@@ -22,6 +22,7 @@ mod index;
 mod record;
 mod kmer;
 mod hash;
+mod metrics;
 
 #[derive(Parser)]
 #[command(

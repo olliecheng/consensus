@@ -16,8 +16,14 @@ use crate::record::Record;
 #[derive(Serialize, Deserialize)]
 pub struct Index {
     pub records: Vec<Record>,
-    pub sorted_indices: Vec<usize>,
+    pub sorted_indices: Vec<IndexPosition>,
     pub lsh: crate::hash::MinHashLSH,
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
+pub enum IndexPosition {
+    Removed,
+    Present(usize),
 }
 
 fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
@@ -32,39 +38,40 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     loop {
         let position = fastq_reader.position().byte() as usize;
 
-        if let Some(r) = fastq_reader.next() {
-            let rec = r.expect("Invalid record");
+        let Some(r) = fastq_reader.next() else {
+            break
+        };
 
-            let id = rec.id();
-            let id_obj = crate::record::RecordIdentifier {
-                bc: String::from_utf8((&id[0..16]).to_vec()).unwrap(),
-                umi: String::from_utf8((&id[17..29]).to_vec()).unwrap(),
-            };
+        let rec = r.expect("Invalid record");
 
-            let qual = rec.qual().expect(".fastq must have quality");
-            let avg_qual = (
-                qual.iter().map(|x| *x as u64).sum::<u64>() as f64
-            ) / (
-                qual.len() as f64
-            );
-            let seq = rec.raw_seq();
+        let id = rec.id();
+        let id_obj = crate::record::RecordIdentifier {
+            bc: String::from_utf8((&id[0..16]).to_vec()).unwrap(),
+            umi: String::from_utf8((&id[17..29]).to_vec()).unwrap(),
+        };
 
-            let mut rec_elem = Record {
-                id: id_obj,
-                loc: position,
-                avg_qual,
-                hash: None,
-            };
+        let qual = rec.qual().expect(".fastq must have quality");
+        let avg_qual = (
+            qual.iter().map(|x| *x as u64).sum::<u64>() as f64
+        ) / (
+            qual.len() as f64
+        );
 
-            if seq.len() > subseq_size {
-                let subset = &seq[..subseq_size];
-                rec_elem.hash = Some(lsh.store(subset, records.len()));
-            }
+        let seq = rec.raw_seq();
 
-            records.push(rec_elem);
-        } else {
-            break;
+        let mut rec_elem = Record {
+            id: id_obj,
+            loc: position,
+            avg_qual,
+            hash: None,
+        };
+
+        if seq.len() > subseq_size {
+            let subset = &seq[..subseq_size];
+            rec_elem.hash = Some(lsh.store(subset, records.len()));
         }
+
+        records.push(rec_elem);
     }
 
     {
@@ -76,15 +83,29 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     }
 
     info!("Sorting");
-    let mut sorted_indices = (0..records.len()).collect_vec();
 
-    sorted_indices.sort_unstable_by(|a, b| {
-        let qual_a = records[*a].avg_qual;
-        let qual_b = records[*b].avg_qual;
-        qual_a.partial_cmp(&qual_b)
-            .unwrap()
-            .reverse()
-    });
+    let mut sorted_indices = (0..records.len())
+        .map(|i| IndexPosition::Present(i))
+        .collect_vec();
+
+    sorted_indices
+        .sort_unstable_by(|a, b| {
+            let extract_qual = |pos: &IndexPosition| {
+                let IndexPosition::Present(i) = pos else {
+                    panic!("This should never happen");
+                };
+                records[*i].avg_qual;
+            };
+
+            let qual_a = extract_qual(a);
+            let qual_b = extract_qual(b);
+            qual_a.partial_cmp(&qual_b)
+                .unwrap()
+                .reverse()
+        });
+
+    records.shrink_to_fit();
+    sorted_indices.shrink_to_fit();
 
     let index = Index {
         records,

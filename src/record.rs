@@ -8,7 +8,6 @@ pub struct RecordIdentifier {
     pub umi: String,
 }
 
-// let mut record = ["", "", "?", "?", "", ""];
 #[derive(Serialize, Deserialize, PartialEq, Debug, Default)]
 pub struct Record {
     pub id: RecordIdentifier,
