@@ -4,14 +4,23 @@ use anyhow::Result;
 
 use itertools::Itertools;
 use std::io::Cursor;
-use crate::index::IndexPosition;
+use crate::index::{ArchivedIndexPosition, Index, IndexPosition};
 use crate::metrics::{Metric, Distance};
+use rkyv::{util::archived_root, option::ArchivedOption, Deserialize};
 
 struct RecordDist;
 
 pub fn cluster_from(index: &str) -> Result<()> {
-    let reader = std::fs::File::open(index)?;
-    let mut index: crate::index::Index = bincode::deserialize_from(reader)?;
+    let file = std::fs::File::open(index)?;
+
+    // this is unsafe because of the risk of undefined behaviour
+    // if the underlying file is modified.
+    let mmap = unsafe { memmap2::Mmap::map(&file)? };
+    let index = unsafe { archived_root::<Index>(&mmap[..]) };
+
+    // we create a mutable copy of the sorted indices, as this will be modified during
+    // execution. The memory mapped `index` is immutable.
+    let mut sorted_indices = index.sorted_indices.to_vec();
 
     let mut counts = std::collections::BTreeMap::new();
 
@@ -19,11 +28,11 @@ pub fn cluster_from(index: &str) -> Result<()> {
     let threshold = 2;
 
     // in order to avoid an immutable borrow, we will index the array by position
-    for vec_index in 0..index.sorted_indices.len() {
+    for vec_index in 0..sorted_indices.len() {
         // skip read if it has been seen already
-        let i = match index.sorted_indices[vec_index] {
-            IndexPosition::Removed => { continue }
-            IndexPosition::Present(i) => i
+        let i = match sorted_indices[vec_index] {
+            ArchivedIndexPosition::Removed => { continue }
+            ArchivedIndexPosition::Present(i) => i as usize
         };
 
         // WARNING: THIS IS THE INDEXING OPERATION
@@ -34,7 +43,7 @@ pub fn cluster_from(index: &str) -> Result<()> {
             index.records.get_unchecked(i)
         };
 
-        let Some(hash) = &record.hash else {
+        let ArchivedOption::Some(hash) = &record.hash else {
             println!("Skipping, as there is no hash");
             continue;
         };
@@ -56,7 +65,7 @@ pub fn cluster_from(index: &str) -> Result<()> {
                     counts.entry(d).and_modify(|curr| *curr += 1).or_insert(1);
                     // we update this value to be type Removed, so it will be skipped over
                     // in the future
-                    index.sorted_indices[j] = IndexPosition::Removed;
+                    sorted_indices[j] = ArchivedIndexPosition::Removed;
                 }
             }
         }

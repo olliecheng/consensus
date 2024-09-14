@@ -2,21 +2,25 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ops::BitXor;
 use lsh_rs::VecHash;
-use serde::{Serialize, Deserialize};
+
 use ndarray::prelude::*;
 use rand::{Rng};
+
+use rkyv::{with::Skip, Archive, Serialize};
 
 /// A hash family for the [Jaccard Index](https://en.wikipedia.org/wiki/Jaccard_index)
 /// The generic integer N, needs to be able to hold the number of dimensions.
 /// so a `u8` with a vector of > 255 dimensions will cause a `panic`.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct MinHash {
     pub pi: Array1<u32>,
+
     seed: i64,
     n_bands: usize,
     n_projections: usize,
     dim: usize,
 }
+
 
 impl MinHash
 {
@@ -72,18 +76,20 @@ impl lsh_rs::VecHash<u8, u32> for MinHash
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Archive, Serialize)]
 pub struct MinHashLSH {
     pub n_bands: usize,
     pub n_proj: usize,
     pub hash_tables: Vec<HashMap<u32, Vec<usize>>>,
-    hash_function: MinHash,
+
+    #[with(Skip)]
+    hash_function: Option<MinHash>,
 }
 
 impl MinHashLSH {
     pub fn new(n_bands: usize, n_proj: usize, dim: usize) -> Self {
         let hash_tables = (0..n_bands).map(|_| HashMap::new()).collect();
-        let hash_function = MinHash::new(n_bands, n_proj, dim, 0);
+        let hash_function = Some(MinHash::new(n_bands, n_proj, dim, 0));
 
         Self {
             n_bands,
@@ -94,7 +100,10 @@ impl MinHashLSH {
     }
 
     fn _hash(&self, vec: &[u8]) -> Vec<u32> {
-        self.hash_function.hash_vec_query(vec)
+        self.hash_function
+            .as_ref()
+            .expect("Fatal error: hash function is not loaded")
+            .hash_vec_query(vec)
     }
 
     pub fn store(&mut self, vec: &[u8], index: usize) -> Vec<u32> {
@@ -115,7 +124,9 @@ impl MinHashLSH {
         let hash = self._hash(vec);
         self.query_hash(&hash)
     }
+}
 
+impl MinHashLSH {
     pub fn query_hash(&self, hash: &[u32]) -> Vec<usize> {
         self.hash_tables.iter()
             .zip(hash)
@@ -123,6 +134,21 @@ impl MinHashLSH {
                 table.get(&hash).cloned()
             })
             .flatten()
+            .collect()
+    }
+}
+
+impl ArchivedMinHashLSH {
+    pub fn query_hash(&self, hash: &[u32]) -> Vec<usize> {
+        self.hash_tables.iter()
+            .zip(hash)
+            .filter_map(|(table, hash)| {
+                table
+                    .get(&hash)
+                    .and_then(|v| Some(v.to_vec()))
+            })
+            .flatten()
+            .map(|u| u as usize)
             .collect()
     }
 }

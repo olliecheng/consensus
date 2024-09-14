@@ -10,17 +10,18 @@ use lsh_rs::prelude::*;
 use itertools::Itertools;
 use murmur3::murmur3_32;
 use std::io::Cursor;
-use serde::{Deserialize, Serialize};
 use crate::record::Record;
+use rkyv::{Archive, Serialize, Deserialize, ser::Serializer};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Archive, Serialize)]
 pub struct Index {
     pub records: Vec<Record>,
     pub sorted_indices: Vec<IndexPosition>,
     pub lsh: crate::hash::MinHashLSH,
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Archive, Serialize, Eq, PartialEq, Clone)]
+#[archive_attr(derive(Clone))]
 pub enum IndexPosition {
     Removed,
     Present(usize),
@@ -114,8 +115,15 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     };
 
     info!("Saving index...");
-    // dump LSH
-    bincode::serialize_into(wtr, &index).unwrap();
+    let mut serializer = {
+        use rkyv::{
+            Infallible,
+            ser::serializers::{WriteSerializer, CompositeSerializer, AllocScratch},
+        };
+        let s_wtr = WriteSerializer::new(wtr);
+        CompositeSerializer::new(s_wtr, AllocScratch::new(), Infallible)
+    };
+    serializer.serialize_value(&index).unwrap();
 }
 
 

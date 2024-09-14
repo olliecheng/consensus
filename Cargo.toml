@@ -14,7 +14,6 @@ env_logger = "0.11.3"
 itertools = "0.13.0"
 log = "0.4.22"
 lsh-rs = { version = "0.4.0", features = ["blas", "sqlite"] }
-ndarray = { version = "0.13.1", features = ["blas"] }
 murmur3 = "0.5.2"
 rand = "0.8.5"
 rayon = "1.10.0"
@@ -25,6 +24,9 @@ triple_accel = "0.4.0"
 num-traits = "0.2.19"
 gxhash = "3.4.1"
 needletail = "0.5.1"
+rkyv = { version = "0.7.45", features = ["bytecheck"] }
+ndarray = "0.16.1"
+memmap2 = "0.9.5"
 
 [[bin]]
 name = "duplicate-tools"
