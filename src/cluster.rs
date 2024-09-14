@@ -26,11 +26,13 @@ pub fn cluster_from(index: &str) -> Result<()> {
 
     // duplicates are considered as within a threshold of 2
     let threshold = 2;
+    let mut collisions = 0u64;
 
     // in order to avoid an immutable borrow, we will index the array by position
     for (count, vec_index) in (0..sorted_indices.len()).enumerate() {
         if count % 50000 == 0 {
             info!("Processed: {count}");
+            info!("Collision count: {} out of {}", collisions, count);
         }
 
         // skip read if it has been seen already
@@ -61,6 +63,7 @@ pub fn cluster_from(index: &str) -> Result<()> {
             .filter(|j| *j > i); // only select elements we haven't seen yet
 
         for j in query_indices {
+            collisions += 1;
             let new_record = &index.records[j];
 
             let distance = record.id.distance_to(&new_record.id);

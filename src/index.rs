@@ -13,6 +13,8 @@ use std::io::Cursor;
 use crate::record::Record;
 use rkyv::{Archive, Serialize, Deserialize, ser::Serializer};
 
+// The index is not deterministic when running in multithreaded mode.
+// However, as the indices are sorted
 #[derive(Archive, Serialize)]
 pub struct Index {
     pub records: Vec<Record>,
@@ -95,6 +97,7 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
         .map(|i| IndexPosition::Present(i))
         .collect_vec();
 
+    // TODO: make this sort deterministic in the case of overlaps/collisions
     sorted_indices
         .sort_unstable_by(|a, b| {
             let extract_qual = |pos: &IndexPosition| {
