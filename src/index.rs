@@ -36,7 +36,9 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     let dim = subseq_size - shingle_size + 1;
     let mut lsh = crate::hash::MinHashLSH::new(8, 30, dim);
 
+    let mut count = 0usize;
     loop {
+        count += 1;
         let position = fastq_reader.position().byte() as usize;
 
         let Some(r) = fastq_reader.next() else {

@@ -28,7 +28,11 @@ pub fn cluster_from(index: &str) -> Result<()> {
     let threshold = 2;
 
     // in order to avoid an immutable borrow, we will index the array by position
-    for vec_index in 0..sorted_indices.len() {
+    for (count, vec_index) in (0..sorted_indices.len()).enumerate() {
+        if count % 50000 == 0 {
+            info!("Processed: {count}");
+        }
+
         // skip read if it has been seen already
         let i = match sorted_indices[vec_index] {
             ArchivedIndexPosition::Removed => { continue }

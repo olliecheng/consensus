@@ -22,11 +22,11 @@ serde = { version = "=1.0.104", features = ["derive"] }
 spoa = { git = "https://github.com/olliecheng/spoa-rs" }
 triple_accel = "0.4.0"
 num-traits = "0.2.19"
-gxhash = "3.4.1"
 needletail = "0.5.1"
 rkyv = { version = "0.7.45", features = ["bytecheck"] }
 ndarray = "0.16.1"
 memmap2 = "0.9.5"
+ahash = "0.8.11"
 
 [[bin]]
 name = "duplicate-tools"

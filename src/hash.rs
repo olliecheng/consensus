@@ -3,22 +3,26 @@ use std::collections::HashMap;
 use std::ops::BitXor;
 use lsh_rs::VecHash;
 
+use ahash::{AHasher, RandomState};
+use std::hash::{BuildHasher, Hasher};
+
 use ndarray::prelude::*;
 use rand::{Rng};
 
 use rkyv::{with::Skip, Archive, Serialize};
+use rkyv::vec::ArchivedVec;
 
 /// A hash family for the [Jaccard Index](https://en.wikipedia.org/wiki/Jaccard_index)
 /// The generic integer N, needs to be able to hold the number of dimensions.
 /// so a `u8` with a vector of > 255 dimensions will cause a `panic`.
-#[derive(Clone)]
 pub struct MinHash {
-    pub pi: Array1<u32>,
+    pub pi: Array1<u64>,
 
     seed: i64,
     n_bands: usize,
     n_projections: usize,
     dim: usize,
+    hash_builder: RandomState,
 }
 
 
@@ -30,8 +34,11 @@ impl MinHash
 
         // generate XOR permutations
         // we will use 32-bit integers as the hash value
-        let mut arr = vec![0u32; n_projections * n_bands];
+        let mut arr = vec![0u64; n_projections * n_bands];
         rand::thread_rng().fill(&mut arr[..]);
+
+        // magic number!
+        let hash_builder = RandomState::with_seed(110422);
 
         MinHash {
             pi: Array::from(arr),
@@ -39,18 +46,19 @@ impl MinHash
             n_bands,
             n_projections,
             dim,
+            hash_builder,
         }
     }
 }
 
-impl lsh_rs::VecHash<u8, u32> for MinHash
+impl lsh_rs::VecHash<u8, u64> for MinHash
 {
-    fn hash_vec_query(&self, v: &[u8]) -> Vec<u32> {
+    fn hash_vec_query(&self, v: &[u8]) -> Vec<u64> {
         let windows = v.windows(8);
         let quality_hashes = Array2::from_shape_vec(
             (self.dim, 1),
             windows
-                .map(|x| gxhash::gxhash32(x, self.seed))
+                .map(|x| self.hash_builder.hash_one(x))
                 .collect(),
         ).expect("Should not fail");
 
@@ -70,7 +78,7 @@ impl lsh_rs::VecHash<u8, u32> for MinHash
                 for x in v {
                     bytes.extend(x.to_ne_bytes())
                 }
-                gxhash::gxhash32(&bytes, self.seed)
+                self.hash_builder.hash_one(&bytes)
             })
             .collect()
     }
@@ -80,7 +88,7 @@ impl lsh_rs::VecHash<u8, u32> for MinHash
 pub struct MinHashLSH {
     pub n_bands: usize,
     pub n_proj: usize,
-    pub hash_tables: Vec<HashMap<u32, Vec<usize>>>,
+    pub hash_tables: Vec<HashMap<u64, Vec<usize>>>,
 
     #[with(Skip)]
     hash_function: Option<MinHash>,
@@ -99,16 +107,15 @@ impl MinHashLSH {
         }
     }
 
-    fn _hash(&self, vec: &[u8]) -> Vec<u32> {
+    fn _hash(&self, vec: &[u8]) -> Vec<u64> {
         self.hash_function
             .as_ref()
             .expect("Fatal error: hash function is not loaded")
             .hash_vec_query(vec)
     }
 
-    pub fn store(&mut self, vec: &[u8], index: usize) -> Vec<u32> {
+    pub fn store(&mut self, vec: &[u8], index: usize) -> Vec<u64> {
         let hash = self._hash(vec);
-        // println!("{hash:?}");
 
         self.hash_tables.iter_mut()
             .zip(&hash)
@@ -127,7 +134,7 @@ impl MinHashLSH {
 }
 
 impl MinHashLSH {
-    pub fn query_hash(&self, hash: &[u32]) -> Vec<usize> {
+    pub fn query_hash(&self, hash: &[u64]) -> Vec<usize> {
         self.hash_tables.iter()
             .zip(hash)
             .filter_map(|(table, hash)| {
@@ -139,7 +146,7 @@ impl MinHashLSH {
 }
 
 impl ArchivedMinHashLSH {
-    pub fn query_hash(&self, hash: &[u32]) -> Vec<usize> {
+    pub fn query_hash(&self, hash: &[u64]) -> Vec<usize> {
         self.hash_tables.iter()
             .zip(hash)
             .filter_map(|(table, hash)| {
