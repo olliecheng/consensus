@@ -1,0 +1,59 @@
+name: Nightly build
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: "build"
+          target: "x86_64-unknown-linux-gnu"
+          args: "--release"
+      - name: Upload Linux Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: nailpolish-linux-x86_64
+          path: target/x86_64-unknown-linux-gnu/release/nailpolish
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Add x86_64-apple-darwin target
+        run: rustup target add x86_64-apple-darwin
+
+      - name: Add aarch64-apple-darwin target
+        run: rustup target add aarch64-apple-darwin
+
+      - name: Build for macOS (x86_64)
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Build for macOS (arm64)
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Create Universal Binary
+        run: |
+          lipo -create \
+            target/x86_64-apple-darwin/release/nailpolish \
+            target/aarch64-apple-darwin/release/nailpolish \
+            -output nailpolish
+
+      - name: Upload macOS Universal Binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: nailpolish-macos-universal
+          path: nailpolish
