@@ -1,6 +1,7 @@
 # 💅 nailpolish
 
-[![Build status](https://github.com/olliecheng/nailpolish/actions/workflows/build.yml/badge.svg)](https://github.com/olliecheng/nailpolish/actions/workflows/build.yml) ![Static Badge](https://img.shields.io/badge/libc-%E2%89%A5%202.17-blue)
+[![Build status](https://github.com/olliecheng/nailpolish/actions/workflows/build.yml/badge.svg)](https://github.com/olliecheng/nailpolish/actions/workflows/build.yml) ![Static Badge](https://img.shields.io/badge/libc-%E2%89%A5%202.17-blue) ![GitHub Release](https://img.shields.io/github/v/release/olliecheng/nailpolish?include_prereleases)
+
 
 When demultiplexing data, duplicates are produced which usually contain many similarities,
 but also contain conflicting information at certain points.
