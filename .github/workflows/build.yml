@@ -32,8 +32,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
-          name: "nightly_${{ github.head_ref }}"
-          tag_name: "nightly_${{ github.head_ref }}"
+          name: "nightly_${{ github.ref_name }}"
+          tag_name: "nightly_${{ github.ref_name }}"
           files: target/x86_64-unknown-linux-gnu/release/nailpolish
           fail_on_unmatched_files: true
 
@@ -71,7 +71,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           prerelease: true
-          name: "nightly_${{ github.head_ref }}"
-          tag_name: "nightly_${{ github.head_ref }}"
+          name: "nightly_${{ github.ref_name }}"
+          tag_name: "nightly_${{ github.ref_name }}"
           files: nailpolish-macos-universal
           fail_on_unmatched_files: true
