@@ -1,5 +1,5 @@
-use clap::builder::Styles;
 use clap::builder::styling::AnsiColor;
+use clap::builder::Styles;
 use clap::{Parser, Subcommand};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -32,16 +32,29 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create an index file from a demultiplexed .fastq, if one doesn't already exist
+    /// Create an index file from a demultiplexed .fastq
     #[command(arg_required_else_help = true)]
-    GenerateIndex {
+    Index {
         /// the input .fastq file
-        #[arg(long)]
         file: String,
+
+        #[arg(value_enum, conflicts_with = "barcode_regex", default_value = "bc-umi")]
+        preset: crate::preset::PresetBarcodeFormats,
 
         /// the output index file
         #[arg(long, default_value = "index.tsv")]
         index: String,
+
+        /// barcode regex format type, for custom header styles.
+        /// This will override the preset given. For example:
+        ///     ^@([ATCG]{16})_([ATCG]{12})
+        /// for the BC-UMI preset.
+        #[arg(long)]
+        barcode_regex: Option<String>,
+
+        /// skip reads which do not match the barcode expression
+        #[arg(long)]
+        skip_unmatched: bool,
     },
 
     /// Generate a summary of duplicate statistics from an index file

@@ -2,15 +2,25 @@ use csv::ReaderBuilder;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-use anyhow::{Result};
+use anyhow::Result;
 use indexmap::IndexMap;
 
 pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<usize>>;
 
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct RecordIdentifier {
-    pub bc: String,
-    pub umi: String,
+    pub head: String,
+    pub tail: String,
+}
+
+impl std::fmt::Display for RecordIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.tail.len() == 0 {
+            f.write_str(&self.head)
+        } else {
+            write!(f, "{}_{}", self.head, self.tail)
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -41,12 +51,17 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
         let record = read?;
         stats.total_reads += 1;
 
-        let id = RecordIdentifier {
-            bc: record[1].to_string(),
-            umi: record[4].to_string(),
+        let split_loc = match record[0].find('_') {
+            Some(v) => v,
+            None => record[0].len() - 1
         };
 
-        let index = record[5].parse()?;
+        let id = RecordIdentifier {
+            head: record[0][..split_loc].to_string(),
+            tail: record[0][(split_loc + 1)..].to_string(),
+        };
+
+        let index = record[1].parse()?;
         if let Some(v) = map.get_mut(&id) {
             v.push(index);
         } else {
