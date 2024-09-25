@@ -54,7 +54,7 @@ impl MinHash
 impl lsh_rs::VecHash<u8, u64> for MinHash
 {
     fn hash_vec_query(&self, v: &[u8]) -> Vec<u64> {
-        let windows = v.windows(8);
+        let windows = v.windows(12);
         let quality_hashes = Array2::from_shape_vec(
             (self.dim, 1),
             windows
@@ -69,7 +69,9 @@ impl lsh_rs::VecHash<u8, u64> for MinHash
             .bitxor(&self.pi);
 
         // get the minimum along rows (axis 1)
-        let min_hashes = all_hashes.map_axis(Axis(0), |view| *view.iter().min().unwrap());
+        let min_hashes = all_hashes
+            .map_axis(Axis(0), |view| *view.iter().min().unwrap());
+
         min_hashes
             .to_vec()
             .rchunks_exact(self.n_projections)

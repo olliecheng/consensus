@@ -1,9 +1,10 @@
 name: Nightly build
 
+permissions:
+  contents: write
+
 on:
   push:
-    branches: [ '*' ]
-  pull_request:
     branches: [ '*' ]
   workflow_dispatch:
 
@@ -28,6 +29,15 @@ jobs:
           name: nailpolish-linux-x86_64
           path: target/x86_64-unknown-linux-gnu/release/nailpolish
 
+      - name: Release nightly
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          name: "nightly_${{ github.ref_name }}"
+          tag_name: "nightly_${{ github.ref_name }}"
+          files: target/x86_64-unknown-linux-gnu/release/nailpolish
+          fail_on_unmatched_files: true
+
   build-macos:
     runs-on: macos-latest
     steps:
@@ -50,10 +60,19 @@ jobs:
           lipo -create \
             target/x86_64-apple-darwin/release/nailpolish \
             target/aarch64-apple-darwin/release/nailpolish \
-            -output nailpolish
+            -output nailpolish-macos-universal
 
       - name: Upload macOS Universal Binary
         uses: actions/upload-artifact@v3
         with:
           name: nailpolish-macos-universal
-          path: nailpolish
+          path: nailpolish-macos-universal
+
+      - name: Release nightly
+        uses: softprops/action-gh-release@v1
+        with:
+          prerelease: true
+          name: "nightly_${{ github.ref_name }}"
+          tag_name: "nightly_${{ github.ref_name }}"
+          files: nailpolish-macos-universal
+          fail_on_unmatched_files: true

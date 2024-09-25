@@ -34,9 +34,9 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     let mut records = Vec::new();
 
     let subseq_size = 100;
-    let shingle_size = 8;
+    let shingle_size = 12;
     let dim = subseq_size - shingle_size + 1;
-    let mut lsh = crate::hash::MinHashLSH::new(8, 30, dim);
+    let mut lsh = crate::hash::MinHashLSH::new(5, 15, dim);
 
     let mut count = 0usize;
     loop {
