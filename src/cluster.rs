@@ -18,6 +18,13 @@ pub fn cluster_from(index: &str) -> Result<()> {
     let mmap = unsafe { memmap2::Mmap::map(&file)? };
     let index = unsafe { archived_root::<Index>(&mmap[..]) };
 
+    for (k, v) in index.lsh.hash_tables[0].iter() {
+        let length = v.len();
+        if length > 9 {
+            println!("{}", v.len());
+        }
+    }
+
     // we create a mutable copy of the sorted indices, as this will be modified during
     // execution. The memory mapped `index` is immutable.
     let mut sorted_indices = index.sorted_indices.to_vec();

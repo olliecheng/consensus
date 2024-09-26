@@ -31,5 +31,5 @@ pub struct Record {
     pub id: RecordIdentifier,
     pub loc: usize,
     pub avg_qual: f64,
-    pub hash: Option<Vec<u64>>,
+    pub hash: Option<Vec<u32>>,
 }

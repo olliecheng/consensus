@@ -34,9 +34,9 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     let mut records = Vec::new();
 
     let subseq_size = 100;
-    let shingle_size = 12;
-    let dim = subseq_size - shingle_size + 1;
-    let mut lsh = crate::hash::MinHashLSH::new(5, 15, dim);
+    // let shingle_size = 14;
+    // let dim = subseq_size - shingle_size + 1;
+    let mut lsh = crate::hash::MinHashLSH::new(5, 25, 14);
 
     let mut count = 0usize;
     loop {
@@ -87,7 +87,7 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
         // print summary statistics
         println!("Hash table statistics: ");
         for table in &lsh.hash_tables {
-            println!("Table: avg {} / {}", table.values().map(|x| x.len()).sum::<usize>(), table.len());
+            println!("Table: elements {} / unique {}", table.values().map(|x| x.len()).sum::<usize>(), table.len());
         }
     }
 
