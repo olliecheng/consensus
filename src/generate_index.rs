@@ -2,13 +2,15 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 
-use csv::{Writer, WriterBuilder};
+use csv::{Reader, Writer, WriterBuilder};
 use regex::Regex;
 
-use anyhow::{bail, Result};
+use crate::generate_index::IndexGenerationErr::{InvalidClusterRow, RowNotInClusters};
+use anyhow::{bail, Context, Result};
+use needletail::{FastxReader, Sequence};
 use thiserror::Error;
 
-fn iter_lines<W: Write>(
+fn iter_lines_with_regex<W: Write>(
     mut reader: BufReader<File>,
     mut wtr: Writer<W>,
     re: &Regex,
@@ -26,6 +28,7 @@ fn iter_lines<W: Write>(
     ])?;
 
     let mut result = String::new();
+    // TODO: update this to use needletail
     while let Ok(bsize) = reader.read_line(&mut result) {
         if bsize == 0 {
             // EOF has been reached
@@ -72,6 +75,71 @@ fn iter_lines<W: Write>(
     Ok(stats)
 }
 
+fn iter_lines_with_cluster_file<W: Write>(
+    reader: BufReader<File>,
+    mut wtr: Writer<W>,
+    clusters: &mut Reader<File>,
+    skip_invalid_ids: bool,
+) -> Result<(usize, usize)> {
+    // first, we will read the clusters file
+    info!("Reading identifiers from clusters file...");
+
+    let mut cluster_map = std::collections::HashMap::new();
+
+    for result in clusters.records() {
+        let record = result?;
+
+        let len = record.len();
+
+        let read_id = record[0].to_string();
+        let identifier = match record.len() {
+            2 => record[1].to_string(),
+            3 => format!("{}_{}", record[1].to_string(), record[2].to_string()),
+            _ => bail!(InvalidClusterRow {row: record.as_slice().to_string()})
+        };
+
+        cluster_map.insert(read_id, identifier);
+    }
+
+    info!("Finished reading clusters. ");
+
+
+    let mut stats = (0, 0);
+    let mut fastq_reader = needletail::parser::FastqReader::new(reader);
+
+    let mut count = 0usize;
+    loop {
+        count += 1;
+        if count % 50000 == 0 {
+            info!("Processed: {count}");
+        }
+
+        let position = fastq_reader.position().byte() as usize;
+
+        let Some(r) = fastq_reader.next() else {
+            break
+        };
+
+        let rec = r.expect("Invalid record");
+
+        let id = std::str::from_utf8(rec.id()).context("Could not convert id to string")?;
+        let Some(identifier) = cluster_map.get(id) else {
+            if !skip_invalid_ids {
+                bail!(RowNotInClusters {header: id.to_string()})
+            }
+            stats.1 += 1;
+            continue;
+        };
+        stats.0 += 1;
+
+        wtr.write_record([&identifier, &position.to_string()])?;
+        stats.0 += 1;
+    }
+    wtr.flush()?;
+
+    Ok(stats)
+}
+
 fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize, String)> {
     let Some(captures) = re.captures(header) else {
         bail!(IndexGenerationErr::NoMatch {
@@ -94,8 +162,14 @@ fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize
     )
 }
 
-pub fn construct_index(infile: &str, outfile: &str, barcode_regex: &str, skip_unmatched: bool) -> Result<()> {
-    // time everything
+pub fn construct_index(
+    infile: &str,
+    outfile: &str,
+    barcode_regex: &str,
+    skip_unmatched: bool,
+    clusters: &Option<String>,
+) -> Result<()> {
+    // time everything!
     let now = std::time::Instant::now();
 
     let f = File::open(infile).expect("File could not be opened");
@@ -106,8 +180,17 @@ pub fn construct_index(infile: &str, outfile: &str, barcode_regex: &str, skip_un
         .from_path(outfile)?;
 
     let re = Regex::new(barcode_regex)?;
+    let result = match clusters {
+        None => { iter_lines_with_regex(reader, wtr, &re, skip_unmatched) }
+        Some(filepath) => {
+            let mut cluster_rdr = csv::ReaderBuilder::new()
+                .delimiter(';' as u8)
+                .has_headers(false)
+                .from_path(filepath)?;
 
-    let result = iter_lines(reader, wtr, &re, skip_unmatched)?;
+            iter_lines_with_cluster_file(reader, wtr, &mut cluster_rdr, skip_unmatched)
+        }
+    }?;
 
     let elapsed = now.elapsed().as_secs_f32();
 
@@ -142,5 +225,19 @@ using capture group
         pos: usize,
         count: usize,
         expected: usize,
+    },
+
+    #[error("invalid cluster row: should be of the format
+  `READ_ID;BC;UMI`
+or
+  `READ_ID;BC`, but instead got
+{row}")]
+    InvalidClusterRow {
+        row: String
+    },
+
+    #[error("Row {header} of input file not present in cluster file")]
+    RowNotInClusters {
+        header: String
     },
 }

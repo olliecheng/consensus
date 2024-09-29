@@ -32,7 +32,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create an index file from a demultiplexed .fastq
+    /// Create an index file from a demultiplexed .fast2q
     #[command(arg_required_else_help = true)]
     Index {
         /// the input .fastq file
@@ -45,6 +45,13 @@ pub enum Commands {
         #[arg(long, default_value = "index.tsv")]
         index: String,
 
+        /// whether to use a file containing pre-clustered reads, with every line in one of two
+        /// formats:
+        ///   READ_ID;BARCODE     or,
+        ///   READ_ID;BARCODE;UMI
+        #[arg(long)]
+        clusters: Option<String>,
+
         /// barcode regex format type, for custom header styles.
         /// This will override the preset given. For example:
         ///     ^@([ATCG]{16})_([ATCG]{12})
@@ -52,7 +59,9 @@ pub enum Commands {
         #[arg(long)]
         barcode_regex: Option<String>,
 
-        /// skip reads which do not match the barcode expression
+        /// skip, instead of error, on reads which are not accounted for:
+        /// - if a cluster file is passed, any reads which are not in any cluster
+        /// - if a barcode regex or preset is used (default), any reads which do not match the regex
         #[arg(long)]
         skip_unmatched: bool,
     },

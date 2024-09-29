@@ -58,6 +58,7 @@ fn try_main() -> Result<()> {
             index,
             preset,
             barcode_regex,
+            clusters,
             skip_unmatched
         } => {
             let barcode_regex = match barcode_regex {
@@ -72,7 +73,7 @@ fn try_main() -> Result<()> {
                 }
             };
 
-            generate_index::construct_index(file, index, &barcode_regex, *skip_unmatched)?;
+            generate_index::construct_index(file, index, &barcode_regex, *skip_unmatched, clusters)?;
             info!("Completed index generation to {index}");
         }
         Commands::Call {
