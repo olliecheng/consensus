@@ -78,34 +78,34 @@ impl lsh_rs::VecHash<u8, u32> for MinHash
 
         for kmer in kmer_windows {
             // hash the window
-            // let mut hash = FNV_OFFSET;
-            // fnv_hash(&mut hash, kmer);
-            //
-            // if kmer == b"TTTTTTTTTTTTTT" {
-            //     dbg!(hash);
-            //     panic!("Err");
-            // }
-            //
-            // // XOR hashes with the permutations
-            // let hashes = std::iter::repeat(hash)
-            //     .take(self.n_hashes)
-            //     .zip(self.pi.iter())
-            //     .map(|(a, b)| a ^ b);
+            let mut hash = FNV_OFFSET;
+            fnv_hash(&mut hash, kmer);
+
+            if kmer == b"TTTTTTTTTTTTTT" {
+                dbg!(hash);
+                panic!("Err");
+            }
+
+            // XOR hashes with the permutations
+            let hashes = std::iter::repeat(hash)
+                .take(self.n_hashes)
+                .zip(self.pi.iter())
+                .map(|(a, b)| a ^ b);
 
             // convert kmer into u32s
-            let kmer_secs: Vec<_> = kmer.chunks_exact(4)
-                .map(|c| u32::from_le_bytes(c.try_into().expect("Should not fail")))
-                .collect();
-
-            let hashes: Vec<_> = self.hashers
-                .iter()
-                .map(|hasher| {
-                    kmer_secs.iter()
-                        .fold(0, |c, val| {
-                            c ^ hasher.hash(*val)
-                        })
-                })
-                .collect();
+            // let kmer_secs: Vec<_> = kmer.chunks_exact(4)
+            //     .map(|c| u32::from_le_bytes(c.try_into().expect("Should not fail")))
+            //     .collect();
+            //
+            // let hashes: Vec<_> = self.hashers
+            //     .iter()
+            //     .map(|hasher| {
+            //         kmer_secs.iter()
+            //             .fold(0, |c, val| {
+            //                 c ^ hasher.hash(*val)
+            //             })
+            //     })
+            //     .collect();
 
 
             // let hashes_ = hashes.collect::<Vec<_>>();
@@ -129,15 +129,16 @@ impl lsh_rs::VecHash<u8, u32> for MinHash
 
         // for each band (of size n_projections), we compute the overall hash
         minhashes.chunks_exact(self.n_projections).map(|c| {
-            // let mut hash = FNV_OFFSET;
-            // let chunk_sum = c.iter()
-            //     .fold(0u32, |acc, &v| acc.wrapping_add(v))
-            //     .to_be_bytes();
-            // fnv_hash(&mut hash, &chunk_sum);
-            c.iter()
-                .fold(0u32, |acc, v| {
-                    acc ^ self.hashers[0].hash(*v)
-                })
+            let mut hash = FNV_OFFSET;
+            let chunk_sum = c.iter()
+                .fold(0u32, |acc, &v| acc.wrapping_add(v))
+                .to_be_bytes();
+            fnv_hash(&mut hash, &chunk_sum);
+            hash
+            // c.iter()
+            //     .fold(0u32, |acc, v| {
+            //         acc ^ self.hashers[0].hash(*v)
+            //     })
         }).collect()
     }
 }
