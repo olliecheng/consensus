@@ -36,7 +36,7 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
     let subseq_size = 100;
     // let shingle_size = 14;
     // let dim = subseq_size - shingle_size + 1;
-    let mut lsh = crate::hash::MinHashLSH::new(5, 25, 14);
+    let mut lsh = crate::hash::MinHashLSH::new(10, 25, 12);
 
     let mut count = 0usize;
     loop {
@@ -122,6 +122,15 @@ fn iter_lines<W: Write>(reader: BufReader<File>, wtr: W) {
         sorted_indices,
         lsh,
     };
+
+    index.lsh.print_stats();
+
+    let mut index1 = index.lsh.hash_tables[0].values().map(|x| x.len()).filter(|x| *x > 3).collect_vec();
+    index1.sort();
+    let mut index2 = index.lsh.hash_tables[1].values().map(|x| x.len()).filter(|x| *x > 3).collect_vec();
+    index2.sort();
+    eprintln!("{:?}", index1);
+    eprintln!("\n\n\n{:?}", index2);
 
     info!("Saving index...");
     let mut serializer = {

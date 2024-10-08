@@ -69,8 +69,10 @@ pub fn cluster_from(index: &str) -> Result<()> {
             .into_iter()
             .filter(|j| *j > i); // only select elements we haven't seen yet
 
+        let mut matches = 0;
         for j in query_indices {
             collisions += 1;
+            matches += 1;
             let new_record = &index.records[j];
 
             let distance = record.id.distance_to(&new_record.id);
@@ -83,6 +85,7 @@ pub fn cluster_from(index: &str) -> Result<()> {
                 }
             }
         }
+        println!("Collision {matches}");
     }
 
     println!("Counts: {:?}", counts);
