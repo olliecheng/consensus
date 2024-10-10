@@ -32,7 +32,7 @@ pub fn cluster_from(index: &str) -> Result<()> {
     let mut counts = std::collections::BTreeMap::new();
 
     // duplicates are considered as within a threshold of 2
-    let threshold = 2;
+    let threshold = 4;
     let mut collisions = 0u64;
 
     // in order to avoid an immutable borrow, we will index the array by position
@@ -57,7 +57,7 @@ pub fn cluster_from(index: &str) -> Result<()> {
         };
 
         let ArchivedOption::Some(hash) = &record.hash else {
-            println!("Skipping, as there is no hash");
+            // println!("Skipping, as there is no hash");
             continue;
         };
 
@@ -70,6 +70,7 @@ pub fn cluster_from(index: &str) -> Result<()> {
             .filter(|j| *j > i); // only select elements we haven't seen yet
 
         let mut matches = 0;
+        let mut within = 0;
         for j in query_indices {
             collisions += 1;
             matches += 1;
@@ -78,14 +79,22 @@ pub fn cluster_from(index: &str) -> Result<()> {
             let distance = record.id.distance_to(&new_record.id);
             if let Distance::Dist(d) = distance {
                 if d <= threshold {
+                    // print read
+                    println!("### {}_{}", record.id.bc, record.id.umi);
+                    println!("    {}_{}", new_record.id.bc, new_record.id.umi);
+
                     counts.entry(d).and_modify(|curr| *curr += 1).or_insert(1);
                     // we update this value to be type Removed, so it will be skipped over
                     // in the future
                     sorted_indices[j] = ArchivedIndexPosition::Removed;
+
+                    within += 1;
                 }
             }
         }
-        println!("Collision {matches}");
+        if matches != 0 {
+            println!("Collisions {matches}, within {within}");
+        }
     }
 
     println!("Counts: {:?}", counts);
