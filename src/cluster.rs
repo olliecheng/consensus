@@ -1,4 +1,5 @@
-use crate::record::Record;
+use std::collections::HashMap;
+use crate::record::{ArchivedRecordIdentifier, Record};
 
 use anyhow::Result;
 
@@ -28,12 +29,16 @@ pub fn cluster_from(index: &str) -> Result<()> {
     // we create a mutable copy of the sorted indices, as this will be modified during
     // execution. The memory mapped `index` is immutable.
     let mut sorted_indices = index.sorted_indices.to_vec();
+    let mut read = vec![true; sorted_indices.len()];
 
     let mut counts = std::collections::BTreeMap::new();
 
     // duplicates are considered as within a threshold of 2
-    let threshold = 4;
+    let threshold = 3;
     let mut collisions = 0u64;
+
+    let mut collisions_all: HashMap<usize, usize> = HashMap::new();
+    let mut collisions_exact: HashMap<usize, usize> = HashMap::new();
 
     // in order to avoid an immutable borrow, we will index the array by position
     for (count, vec_index) in (0..sorted_indices.len()).enumerate() {
@@ -47,6 +52,10 @@ pub fn cluster_from(index: &str) -> Result<()> {
             ArchivedIndexPosition::Removed => { continue }
             ArchivedIndexPosition::Present(i) => i as usize
         };
+
+        if !read[i] {
+            continue;
+        }
 
         // WARNING: THIS IS THE INDEXING OPERATION
         // Do *not* perform any mutable operation to `index.records` which would
@@ -70,34 +79,49 @@ pub fn cluster_from(index: &str) -> Result<()> {
             .filter(|j| *j > i); // only select elements we haven't seen yet
 
         let mut matches = 0;
-        let mut within = 0;
+
+        let mut duplicate_collisions = 0;
+
         for j in query_indices {
+            if !read[j] {
+                continue;
+            }
+
             collisions += 1;
             matches += 1;
             let new_record = &index.records[j];
 
             let distance = record.id.distance_to(&new_record.id);
             if let Distance::Dist(d) = distance {
+                counts.entry(d).and_modify(|curr| *curr += 1).or_insert(1);
                 if d <= threshold {
                     // print read
                     println!("### {}_{}", record.id.bc, record.id.umi);
                     println!("    {}_{}", new_record.id.bc, new_record.id.umi);
 
-                    counts.entry(d).and_modify(|curr| *curr += 1).or_insert(1);
                     // we update this value to be type Removed, so it will be skipped over
                     // in the future
                     sorted_indices[j] = ArchivedIndexPosition::Removed;
+                    read[j] = false;
 
-                    within += 1;
+                    duplicate_collisions += 1;
                 }
             }
         }
-        if matches != 0 {
-            println!("Collisions {matches}, within {within}");
+
+        if duplicate_collisions != 0 {
+            println!("Collisions {matches}, within {duplicate_collisions}");
         }
+
+        collisions_all
+            .entry(duplicate_collisions + 1)
+            .and_modify(|v| *v += 1)
+            .or_insert(1);
     }
 
     println!("Counts: {:?}", counts);
+
+    println!("Collisions: {:?}", collisions_all);
 
     info!("Done retrieving records");
 
