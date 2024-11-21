@@ -132,7 +132,7 @@ pub fn consensus(
                     if single {
                         let consensus = std::str::from_utf8(rec.records[0].seq()).unwrap();
 
-                        format!(">{0}_{1}_SIN\n{2}\n", rec.id.bc, rec.id.umi, consensus)
+                        format!(">{0}_SIN\n{1}\n", rec.id, consensus)
                     } else {
                         let mut output = String::new();
 
@@ -150,9 +150,8 @@ pub fn consensus(
                             if output_originals {
                                 writeln!(
                                     output,
-                                    ">{0}_{1}_DUP_{2}_of_{3}\n{4}",
-                                    rec.id.bc,
-                                    rec.id.umi,
+                                    ">{0}_DUP_{1}_of_{2}\n{3}",
+                                    rec.id,
                                     index + 1,
                                     record_count,
                                     std::str::from_utf8(seq).unwrap()
@@ -171,8 +170,8 @@ pub fn consensus(
 
                         writeln!(
                             output,
-                            ">{0}_{1}_CON_{2}\n{3}",
-                            rec.id.bc, rec.id.umi, record_count, consensus
+                            ">{0}_CON_{1}\n{2}",
+                            rec.id, record_count, consensus
                         )
                             .expect("string writing should not fail");
 

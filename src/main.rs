@@ -1,6 +1,9 @@
 // disable unused code warnings for dev builds
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 
+extern crate env_logger;
+#[macro_use]
+extern crate log;
 use std::{
     fs::File,
     io::{prelude::*, stdout, BufWriter},
@@ -10,14 +13,12 @@ use std::{
 use anyhow::Result;
 use clap::Parser;
 
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-
 mod call;
 mod duplicates;
 mod generate_index;
 mod cli;
+mod preset;
+
 use cli::{Cli, Commands};
 // mod ordered_rayon;
 
@@ -52,8 +53,27 @@ fn try_main() -> Result<()> {
                 serde_json::to_string_pretty(&statistics).expect("Should be serialisable")
             );
         }
-        Commands::GenerateIndex { file, index } => {
-            generate_index::construct_index(file, index);
+        Commands::Index {
+            file,
+            index,
+            preset,
+            barcode_regex,
+            clusters,
+            skip_unmatched
+        } => {
+            let barcode_regex = match barcode_regex {
+                Some(v) => {
+                    info!("Using specified barcode format: {v}");
+                    v.clone()
+                }
+                None => {
+                    let regex = preset::get_barcode_regex(preset);
+                    info!("Using preset barcode format {regex}");
+                    regex
+                }
+            };
+
+            generate_index::construct_index(file, index, &barcode_regex, *skip_unmatched, clusters)?;
             info!("Completed index generation to {index}");
         }
         Commands::Call {

@@ -1,5 +1,5 @@
-use clap::builder::Styles;
 use clap::builder::styling::AnsiColor;
+use clap::builder::Styles;
 use clap::{Parser, Subcommand};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -32,16 +32,38 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Create an index file from a demultiplexed .fastq, if one doesn't already exist
+    /// Create an index file from a demultiplexed .fast2q
     #[command(arg_required_else_help = true)]
-    GenerateIndex {
+    Index {
         /// the input .fastq file
-        #[arg(long)]
         file: String,
+
+        #[arg(value_enum, conflicts_with = "barcode_regex", default_value = "bc-umi")]
+        preset: crate::preset::PresetBarcodeFormats,
 
         /// the output index file
         #[arg(long, default_value = "index.tsv")]
         index: String,
+
+        /// whether to use a file containing pre-clustered reads, with every line in one of two
+        /// formats:
+        ///   READ_ID;BARCODE     or,
+        ///   READ_ID;BARCODE;UMI
+        #[arg(long)]
+        clusters: Option<String>,
+
+        /// barcode regex format type, for custom header styles.
+        /// This will override the preset given. For example:
+        ///     ^@([ATCG]{16})_([ATCG]{12})
+        /// for the BC-UMI preset.
+        #[arg(long)]
+        barcode_regex: Option<String>,
+
+        /// skip, instead of error, on reads which are not accounted for:
+        /// - if a cluster file is passed, any reads which are not in any cluster
+        /// - if a barcode regex or preset is used (default), any reads which do not match the regex
+        #[arg(long)]
+        skip_unmatched: bool,
     },
 
     /// Generate a summary of duplicate statistics from an index file
