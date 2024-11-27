@@ -7,80 +7,118 @@ use regex::Regex;
 
 use crate::generate_index::IndexGenerationErr::{InvalidClusterRow, RowNotInClusters};
 use anyhow::{bail, Context, Result};
+use needletail::parser::SequenceRecord;
 use needletail::{FastxReader, Sequence};
 use thiserror::Error;
 
+use crate::file::FastqFile;
+use tempfile::tempfile_in;
+
+// returns the average PHRED quality of the read
+fn write_read<W: Write>(
+    wtr: &mut Writer<W>,
+    rec: &SequenceRecord,
+    identifier: &str,
+    position: usize,
+) -> Result<f64> {
+    let len = rec.num_bases();
+    let qual: u32 = rec.qual().expect(".fastq should not fail here")
+        .iter()
+        .map(|x| *x as u32)
+        .sum();
+
+    let avg_qual = (qual as f64) / (len as f64);
+
+    // we transform the quality to a PHRED score (ASCII ! to I)
+    // https://en.wikipedia.org/wiki/Phred_quality_score
+    let phred_qual = avg_qual - 33f64;
+
+    wtr.write_record(
+        [
+            identifier,
+            &position.to_string(),
+            &format!("{:.2}", phred_qual),
+            &len.to_string()
+        ]
+    )?;
+    Ok(phred_qual)
+}
+
 fn iter_lines_with_regex<W: Write>(
-    mut reader: BufReader<File>,
-    mut wtr: Writer<W>,
+    reader: BufReader<File>,
+    wtr: &mut Writer<W>,
     re: &Regex,
     skip_invalid_ids: bool,
-) -> Result<(usize, usize)> {
-    let mut position = 0usize;
-    let mut count = 0usize;
-    let mut stats = (0, 0);
-    let mut expected_len = 0usize;
+    mut info: FastqFile,
+) -> Result<FastqFile> {
+    // expected_len is used to ensure that every read has the same format
+    let mut expected_len: Option<usize> = None;
 
-    // write headers
-    wtr.write_record([
-        "Identifier",
-        "Position",
-    ])?;
+    let mut fastq_reader = needletail::parser::FastqReader::new(reader);
+    let mut total_quality = 0f64;
+    let mut total_len = 0;
 
-    let mut result = String::new();
-    // TODO: update this to use needletail
-    while let Ok(bsize) = reader.read_line(&mut result) {
-        if bsize == 0 {
-            // EOF has been reached
-            break;
+    while let Some(rec) = fastq_reader.next() {
+        info.read_count += 1;
+
+        if info.read_count % 50000 == 0 {
+            info!("Processed: {}", info.read_count)
         }
 
-        if count % 4 == 0 {
-            match extract_bc_from_header(&result, re, position) {
-                Ok((len, identifier)) => {
-                    if expected_len == 0 {
-                        expected_len = len;
-                    } else if expected_len != len {
-                        // this should never be happening unless optional capture groups
-                        // are used in the regex
-                        bail!(IndexGenerationErr::DifferentMatchCounts {
-                            header: result,
-                            re: re.clone(),
-                            pos: position,
-                            count: len,
-                            expected: expected_len
-                        })
-                    };
+        let rec = rec.expect("Invalid record");
+        let id = std::str::from_utf8(rec.id()).context("Could not convert id to string")?;
+        let position = rec.position().byte() as usize;
 
-                    wtr.write_record([&identifier, &position.to_string()])?;
-                    stats.0 += 1;
-                }
-                Err(e) => {
-                    if !skip_invalid_ids {
-                        bail!(e)
+        match extract_bc_from_header(id, re, position) {
+            Ok((len, identifier)) => {
+                match expected_len {
+                    None => {
+                        expected_len = Some(len)
                     }
-                    stats.1 += 1;
+                    Some(expected) => {
+                        if expected != len {
+                            bail!(
+                                IndexGenerationErr::DifferentMatchCounts {
+                                    header: id.to_string(),
+                                    re: re.clone(),
+                                    pos: position,
+                                    count: len,
+                                    expected
+                                }
+                            )
+                        }
+                    }
                 }
-            };
-        }
 
-        count += 1;
-        position += bsize;
-
-        // reset string
-        result.clear();
+                total_quality += write_read(wtr, &rec, &identifier, position)?;
+                total_len += rec.num_bases();
+                info.matched_read_count += 1;
+            }
+            Err(e) => {
+                if !skip_invalid_ids {
+                    bail!(e)
+                }
+                info.unmatched_read_count += 1;
+            }
+        };
     }
+
     wtr.flush()?;
 
-    Ok(stats)
+    info.avg_qual = total_quality / (info.matched_read_count as f64);
+    info.avg_len = (total_len as f64) / (info.matched_read_count as f64);
+    info.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
+
+    Ok(info)
 }
 
 fn iter_lines_with_cluster_file<W: Write>(
     reader: BufReader<File>,
-    mut wtr: Writer<W>,
+    wtr: &mut Writer<W>,
     clusters: &mut Reader<File>,
     skip_invalid_ids: bool,
-) -> Result<(usize, usize)> {
+    mut info: FastqFile,
+) -> Result<FastqFile> {
     // first, we will read the clusters file
     info!("Reading identifiers from clusters file...");
 
@@ -104,40 +142,40 @@ fn iter_lines_with_cluster_file<W: Write>(
     info!("Finished reading clusters. ");
 
 
-    let mut stats = (0, 0);
     let mut fastq_reader = needletail::parser::FastqReader::new(reader);
+    let mut total_quality = 0f64;
+    let mut total_len = 0;
 
-    let mut count = 0usize;
-    loop {
-        count += 1;
-        if count % 50000 == 0 {
-            info!("Processed: {count}");
+    while let Some(rec) = fastq_reader.next() {
+        info.read_count += 1;
+        if info.read_count % 50000 == 0 {
+            info!("Processed: {}", info.read_count);
         }
 
-        let position = fastq_reader.position().byte() as usize;
-
-        let Some(r) = fastq_reader.next() else {
-            break
-        };
-
-        let rec = r.expect("Invalid record");
-
+        let rec = rec.expect("Invalid record");
         let id = std::str::from_utf8(rec.id()).context("Could not convert id to string")?;
+        let position = rec.position().byte() as usize;
+
         let Some(identifier) = cluster_map.get(id) else {
             if !skip_invalid_ids {
                 bail!(RowNotInClusters {header: id.to_string()})
             }
-            stats.1 += 1;
+            info.unmatched_read_count += 1;
             continue;
         };
-        stats.0 += 1;
+        info.matched_read_count += 1;
 
-        wtr.write_record([&identifier, &position.to_string()])?;
-        stats.0 += 1;
+        total_quality += write_read(wtr, &rec, &identifier, position)?;
+        total_len += rec.num_bases();
     }
+
     wtr.flush()?;
 
-    Ok(stats)
+    info.avg_qual = total_quality / (info.matched_read_count as f64);
+    info.avg_len = (total_len as f64) / (info.matched_read_count as f64);
+    info.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
+
+    Ok(info)
 }
 
 fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize, String)> {
@@ -175,30 +213,71 @@ pub fn construct_index(
     let f = File::open(infile).expect("File could not be opened");
     let reader = BufReader::new(f);
 
-    let wtr = WriterBuilder::new()
+    let file_info = FastqFile {
+        nailpolish_version: crate::cli::VERSION.to_string(),
+        file_path: std::fs::canonicalize(infile)?.display().to_string(),
+        index_date: format!("{:?}", chrono::offset::Local::now()),
+        ..FastqFile::default()
+    };
+
+    let mut temp_file = tempfile_in("./")?;
+    let mut wtr = WriterBuilder::new()
         .delimiter(b'\t')
-        .from_path(outfile)?;
+        .from_writer(&mut temp_file);
+
+    // write headers and file information
+    wtr.write_record([
+        "id",
+        "pos",
+        "avg_qual",
+        "len"
+    ])?;
+
 
     let re = Regex::new(barcode_regex)?;
-    let result = match clusters {
-        None => { iter_lines_with_regex(reader, wtr, &re, skip_unmatched) }
+    let mut result = match clusters {
+        None => { iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, file_info) }
         Some(filepath) => {
             let mut cluster_rdr = csv::ReaderBuilder::new()
                 .delimiter(';' as u8)
                 .has_headers(false)
                 .from_path(filepath)?;
 
-            iter_lines_with_cluster_file(reader, wtr, &mut cluster_rdr, skip_unmatched)
+            iter_lines_with_cluster_file(reader, &mut wtr, &mut cluster_rdr, skip_unmatched, file_info)
         }
     }?;
 
-    let elapsed = now.elapsed().as_secs_f32();
 
+    // amount of time passed
+    result.elapsed = now.elapsed().as_secs_f64();
+
+    // report results
     if skip_unmatched {
-        info!("Stats: {} matched reads, {} unmatched reads, {elapsed:.1}s runtime", result.0, result.1)
+        info!(
+            "Stats: {} matched reads, {} unmatched reads, {:.1}s runtime",
+            result.matched_read_count,
+            result.unmatched_read_count,
+            result.elapsed,
+        )
     } else {
-        info!("Stats: {} reads, {elapsed:.1}s runtime", result.0)
+        info!("Stats: {} reads, {:.1}s runtime", result.matched_read_count, result.elapsed)
     }
+
+    info!("Writing to {outfile}...");
+
+    // write to actual output file
+    let mut wtr_out = File::create(outfile)?;
+    writeln!(wtr_out, "#{}", serde_json::to_string(&result)?)?;
+
+    // drop the mutable write, and seek to the start so we can read
+    drop(wtr);
+    temp_file.seek(std::io::SeekFrom::Start(0))?;
+
+    // copy from the temporary file into the final output file
+    std::io::copy(
+        &mut temp_file,
+        &mut wtr_out,
+    )?;
 
     Ok(())
 }

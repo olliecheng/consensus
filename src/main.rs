@@ -18,6 +18,7 @@ mod duplicates;
 mod generate_index;
 mod cli;
 mod preset;
+mod file;
 
 use cli::{Cli, Commands};
 // mod ordered_rayon;
