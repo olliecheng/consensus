@@ -41,6 +41,7 @@
     <script>
         let stats = {{{ stats }}};
         let data = stats.distribution;
+        let max_x = Math.max(...Object.keys(stats.distribution).map((x) => Number(x)));
     </script>
 </head>
 <body>
@@ -69,7 +70,7 @@
             dataset size
         </td>
         <td>
-            {{ gb }}
+            {{ gb }} GB
         </td>
     </tr>
     <tr>
@@ -129,7 +130,11 @@
 
 A 'UMI group' is a group of reads which all share the same barcode and UMI.
 
-<canvas id="byUmi"></canvas>
+<div class="bar-chart-container">
+    <div>
+        <canvas id="byUmi"></canvas>
+    </div>
+</div>
 
 <h2>
     By read
@@ -137,7 +142,12 @@ A 'UMI group' is a group of reads which all share the same barcode and UMI.
 
 Each read is classified by the number of reads in its corresponding UMI group.
 
-<canvas id="byRead"></canvas>
+<div class="bar-chart-container">
+    <div>
+        <canvas id="byRead"></canvas>
+    </div>
+</div>
+
 
 <script>
     const umi_dup_data = {
@@ -152,10 +162,16 @@ Each read is classified by the number of reads in its corresponding UMI group.
     };
 
     const ctxUmi = document.getElementById('byUmi').getContext('2d');
-    new Chart(ctxUmi, {
+    let umiChart = new Chart(ctxUmi, {
         type: 'bar',
         data: umi_dup_data,
         options: {
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'nearest',
+                axis: 'x'
+            },
             plugins: {
                 legend: {
                     display: false
@@ -167,7 +183,11 @@ Each read is classified by the number of reads in its corresponding UMI group.
                     beginAtZero: true
                 },
                 x: {
-                    title: "Duplicate count"
+                    grace: 0,
+                    offset: false,
+                    beginAtZero: true,
+                    title: "Duplicate count",
+                    type: "linear"
                 }
             }
         }
@@ -187,10 +207,16 @@ Each read is classified by the number of reads in its corresponding UMI group.
     };
 
     const ctxRead = document.getElementById('byRead').getContext('2d');
-    new Chart(ctxRead, {
+    let readChart = new Chart(ctxRead, {
         type: 'bar',
         data: read_dup_data,
         options: {
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'nearest',
+                axis: 'x'
+            },
             plugins: {
                 legend: {
                     display: false
@@ -202,11 +228,23 @@ Each read is classified by the number of reads in its corresponding UMI group.
                     beginAtZero: true
                 },
                 x: {
-                    title: "duplicate count"
+                    grace: 0,
+                    offset: false,
+                    beginAtZero: true,
+                    title: "Duplicate count",
+                    type: "linear"
                 }
             }
         }
     });
+
+
+    umiChart.canvas.parentNode.style.height = '400px';
+    umiChart.canvas.parentNode.style.width = 15 * max_x + "px";
+
+
+    readChart.canvas.parentNode.style.height = '400px';
+    readChart.canvas.parentNode.style.width = 15 * max_x + "px";
 </script>
 </body>
 </html>
