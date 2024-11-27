@@ -11,6 +11,7 @@ clap = { version = "4.5.7", features = ["derive"] }
 crossbeam = "0.8.4"
 csv = "1.3.0"
 env_logger = "0.11.3"
+handlebars = "6.2.0"
 indexmap = "2.5.0"
 log = "0.4.22"
 needletail = { git = "https://github.com/olliecheng/needletail" }

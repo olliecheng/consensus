@@ -19,6 +19,7 @@ mod generate_index;
 mod cli;
 mod preset;
 mod file;
+mod summary;
 
 use cli::{Cli, Commands};
 // mod ordered_rayon;
@@ -45,14 +46,8 @@ fn try_main() -> Result<()> {
     println!("nailpolish v{}", cli::VERSION);
 
     match &cli.command {
-        Commands::Summary { index } => {
-            info!("Summarising index at {index}");
-            let (_, statistics) = duplicates::get_duplicates(index)?;
-
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&statistics).expect("Should be serialisable")
-            );
+        Commands::Summary { index, output } => {
+            summary::summarize(index, output)?;
         }
         Commands::Index {
             file,
@@ -86,7 +81,7 @@ fn try_main() -> Result<()> {
             report_original_reads,
         } => {
             info!("Collecting duplicates... {}", duplicates_only);
-            let (duplicates, _statistics) =
+            let (duplicates, _statistics, _) =
                 duplicates::get_duplicates(index).expect("Could not parse index.");
             info!("Iterating through individual duplicates");
 
@@ -122,7 +117,7 @@ fn try_main() -> Result<()> {
             );
 
             info!("Collecting duplicates...");
-            let (duplicates, _statistics) =
+            let (duplicates, statistics, _) =
                 duplicates::get_duplicates(index).expect("Could not parse index.");
             info!("Iterating through individual duplicates");
 

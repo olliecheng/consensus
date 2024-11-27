@@ -72,6 +72,10 @@ pub enum Commands {
         /// the index file
         #[arg(long)]
         index: String,
+
+        /// output file
+        #[arg(long, default_value = "summary.html")]
+        output: String,
     },
 
     /// Generate a consensus-called 'cleaned up' file

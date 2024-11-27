@@ -1,9 +1,10 @@
+use crate::file::FastqFile;
+use anyhow::{Context, Result};
 use csv::ReaderBuilder;
+use indexmap::IndexMap;
 use serde::Serialize;
 use std::collections::BTreeMap;
-
-use anyhow::Result;
-use indexmap::IndexMap;
+use std::io::{BufRead, BufReader};
 
 pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<usize>>;
 
@@ -32,7 +33,7 @@ pub struct DuplicateStatistics {
     pub distribution: BTreeMap<usize, usize>,
 }
 
-pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)> {
+pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics, FastqFile)> {
     let mut map = IndexMap::<RecordIdentifier, Vec<usize>>::new();
     let mut stats = DuplicateStatistics {
         total_reads: 0,
@@ -42,10 +43,19 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
         distribution: BTreeMap::new(),
     };
 
+    let file = std::fs::File::open(index)?;
+    let mut file = BufReader::new(file);
+
+    let mut header = String::new();
+    file.read_line(&mut header).context("Could not read the first line")?;
+
+    assert!(header.starts_with('#'));
+    let info: FastqFile = serde_json::from_str(&header[1..])?;
+
     let mut reader = ReaderBuilder::new()
         .delimiter(b'\t')
         .has_headers(true)
-        .from_path(index)?;
+        .from_reader(&mut file);
 
     for read in reader.records() {
         let record = read?;
@@ -95,5 +105,5 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics)
 
     stats.proportion_duplicate = stats.duplicate_reads as f64 / stats.total_reads as f64;
 
-    Ok((map, stats))
+    Ok((map, stats, info))
 }
