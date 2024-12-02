@@ -8,7 +8,7 @@ use regex::Regex;
 use crate::generate_index::IndexGenerationErr::{InvalidClusterRow, RowNotInClusters};
 use anyhow::{bail, Context, Result};
 use needletail::parser::SequenceRecord;
-use needletail::{FastxReader, Sequence};
+use needletail::FastxReader;
 use thiserror::Error;
 
 use crate::file::FastqFile;
@@ -127,12 +127,10 @@ fn iter_lines_with_cluster_file<W: Write>(
     for result in clusters.records() {
         let record = result?;
 
-        let len = record.len();
-
         let read_id = record[0].to_string();
         let identifier = match record.len() {
             2 => record[1].to_string(),
-            3 => format!("{}_{}", record[1].to_string(), record[2].to_string()),
+            3 => format!("{}_{}", &record[1], &record[2]),
             _ => bail!(InvalidClusterRow {row: record.as_slice().to_string()})
         };
 
@@ -165,7 +163,7 @@ fn iter_lines_with_cluster_file<W: Write>(
         };
         info.matched_read_count += 1;
 
-        total_quality += write_read(wtr, &rec, &identifier, position)?;
+        total_quality += write_read(wtr, &rec, identifier, position)?;
         total_len += rec.num_bases();
     }
 
@@ -239,7 +237,7 @@ pub fn construct_index(
         None => { iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, file_info) }
         Some(filepath) => {
             let mut cluster_rdr = csv::ReaderBuilder::new()
-                .delimiter(';' as u8)
+                .delimiter(b';')
                 .has_headers(false)
                 .from_path(filepath)?;
 

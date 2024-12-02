@@ -1,7 +1,6 @@
 use crate::duplicates;
 use anyhow::{Context, Result};
 use serde_json::json;
-use std::collections::HashMap;
 
 // include the template HTML file at compile time as a string literal
 const TEMPLATE_HTML: &str = include_str!("summary_template.html");
@@ -24,8 +23,8 @@ pub fn summarize(index: &str, output: &str) -> Result<()> {
     );
 
     let file = std::fs::File::create(output)?;
-    let mut reg = handlebars::Handlebars::new();
-    reg.render_template_to_write(TEMPLATE_HTML, &data, file);
+    let reg = handlebars::Handlebars::new();
+    reg.render_template_to_write(TEMPLATE_HTML, &data, file)?;
 
     Ok(())
 }

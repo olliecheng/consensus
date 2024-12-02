@@ -1,15 +1,12 @@
-use crate::duplicates::{DuplicateMap, RecordIdentifier};
-use crate::io::{iter_duplicates, until_err, write_read, ReadType, Record, UMIGroup};
+use crate::duplicates::DuplicateMap;
+use crate::io::{iter_duplicates, until_err, ReadType, Record, UMIGroup};
 
-use needletail::parser::{FastqReader, FastxReader, SequenceRecord};
 use spoa::{AlignmentEngine, AlignmentType};
 
-use std::fs::File;
 use std::io::prelude::*;
-use std::io::{Cursor, Seek, SeekFrom};
-use std::process::{Command, Stdio};
+use std::io::Cursor;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
 
 use crate::io;
 use pariter::IteratorExt as _;
@@ -96,7 +93,7 @@ fn call_record(group: UMIGroup, output_originals: bool) -> Vec<u8> {
     // for singletons, the read is its own consensus
     if length == 1 {
         let record = &group.records[0];
-        io::write_read(&mut output, record, &group, ReadType::CONSENSUS, false).unwrap();
+        io::write_read(&mut output, record, &group, ReadType::Consensus, false).unwrap();
         return output.into_inner();
     }
 
@@ -109,7 +106,7 @@ fn call_record(group: UMIGroup, output_originals: bool) -> Vec<u8> {
     for record in group.records.iter() {
         if output_originals {
             // Write the original reads as well
-            io::write_read(&mut output, record, &group, ReadType::ORIGINAL, false).unwrap();
+            io::write_read(&mut output, record, &group, ReadType::Original, false).unwrap();
         }
 
         // Align to the graph
@@ -135,7 +132,7 @@ fn call_record(group: UMIGroup, output_originals: bool) -> Vec<u8> {
         qual: "".to_string(),
     };
 
-    io::write_read(&mut output, &consensus, &group, ReadType::CONSENSUS, false).unwrap();
+    io::write_read(&mut output, &consensus, &group, ReadType::Consensus, false).unwrap();
 
     output.into_inner()
 }

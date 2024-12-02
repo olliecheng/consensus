@@ -16,7 +16,7 @@ pub struct RecordIdentifier {
 
 impl std::fmt::Display for RecordIdentifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.tail.len() == 0 {
+        if self.tail.is_empty() {
             f.write_str(&self.head)
         } else {
             write!(f, "{}_{}", self.head, self.tail)

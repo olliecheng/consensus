@@ -1,5 +1,5 @@
 // disable unused code warnings for dev builds
-#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+// #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 
 extern crate env_logger;
 #[macro_use]

@@ -31,17 +31,24 @@ pub fn group(
         false,
     )?;
 
+    let mut count = 0usize;
+
     duplicate_iterator
         // iterate until an error is found, writing into &err
         .scan(&mut err, until_err)
         .try_for_each(|group| -> Result<()> {
+            count += 1;
+            if count % 500000 == 0 {
+                info!("Processed: {} reads", count);
+            }
+
             for rec in group.records.iter() {
                 // write to the output file
                 crate::io::write_read(
                     writer,
-                    &rec,
+                    rec,
                     &group,
-                    ReadType::ORIGINAL,
+                    ReadType::Original,
                     true,
                 )?
             }

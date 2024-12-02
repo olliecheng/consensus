@@ -6,8 +6,8 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 
 pub enum ReadType {
-    CONSENSUS,
-    ORIGINAL,
+    Consensus,
+    Original,
 }
 
 pub struct Record {
@@ -64,7 +64,7 @@ pub fn get_read_at_position(
     Ok(Record {
         id: String::from_utf8(rec.id().to_vec())?,
         seq: String::from_utf8(rec.seq().to_vec())?,
-        qual: String::from_utf8(rec.qual().unwrap_or_else(|| &[]).to_vec())?,
+        qual: String::from_utf8(rec.qual().unwrap_or(&[]).to_vec())?,
     })
 }
 
@@ -80,7 +80,8 @@ pub fn get_read_at_position(
 /// This function will return an error if:
 /// * The file cannot be opened.
 /// * The record cannot be read at the specified position.
-/// The iterator yield Some(Err) if:
+///
+/// The iterator yields Some(Err) if:
 /// * There are issues reading the read at at the specified position. See the documentation for
 ///   `get_read_at_position` for more.
 pub fn iter_duplicates(
@@ -176,8 +177,8 @@ pub fn write_read(
     fastq: bool,
 ) -> std::io::Result<()> {
     let read_type_label = match read_type {
-        ReadType::CONSENSUS => { "CONSENSUS" }
-        ReadType::ORIGINAL => { "ORIGINAL" }
+        ReadType::Consensus => { "CONSENSUS" }
+        ReadType::Original => { "ORIGINAL" }
     };
 
     if fastq {
