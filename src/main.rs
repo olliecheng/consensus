@@ -20,6 +20,8 @@ mod cli;
 mod preset;
 mod file;
 mod summary;
+mod io;
+mod group;
 
 use cli::{Cli, Commands};
 // mod ordered_rayon;
@@ -101,29 +103,16 @@ fn try_main() -> Result<()> {
         Commands::Group {
             index,
             input,
-            output,
-            threads,
-            shell,
-            command,
+            output
         } => {
-            let command_str = command.join(" ");
-            info!(
-                "Executing `{}` for every group using {}",
-                command_str, shell
-            );
-            info!(
-                "Multithreading is {}",
-                if *threads != 1 { "enabled" } else { "disabled" }
-            );
-
-            info!("Collecting duplicates...");
-            let (duplicates, statistics, _) =
+            let (duplicates, _, _) =
                 duplicates::get_duplicates(index).expect("Could not parse index.");
-            info!("Iterating through individual duplicates");
 
             let mut writer = get_writer(output)?;
 
-            call::custom_command(input, &mut writer, duplicates, *threads, shell, &command_str)?;
+            group::group(input, &mut writer, duplicates)?;
+
+            info!("Completed successfully.")
         }
     };
     Ok(())

@@ -106,33 +106,17 @@ pub enum Commands {
         report_original_reads: bool,
     },
 
-    /// 'Group' duplicate reads, and pass to downstream applications.
+    /// Tag each read by its UMI group, and write to a .fastq file
     #[command(arg_required_else_help = true)]
     Group {
         /// the index file
         #[arg(long)]
         index: String,
 
-        /// the input .fastq
         #[arg(long)]
         input: String,
 
-        /// the output location, or default to stdout
         #[arg(long)]
         output: Option<String>,
-
-        /// the shell used to run the given command
-        #[arg(long, default_value = "bash")]
-        shell: String,
-
-        /// the number of threads to use. this will not guard against race conditions in any
-        /// downstream applications used. this will effectively set the number of individual
-        /// processes to launch
-        #[arg(short, long, default_value_t = 1)]
-        threads: usize,
-
-        /// the command to run. any groups will be passed as .fastq standard input.
-        #[arg(trailing_var_arg = true, default_value = "cat")]
-        command: Vec<String>,
     },
 }
