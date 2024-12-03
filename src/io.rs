@@ -1,7 +1,6 @@
 use crate::duplicates::{DuplicateMap, RecordIdentifier};
 use anyhow::Context;
-use needletail::parser::FastqReader;
-use needletail::FastxReader;
+use needletail::{parser::FastqReader, FastxReader};
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 

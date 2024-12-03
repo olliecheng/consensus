@@ -23,9 +23,22 @@ mod summary;
 mod io;
 mod group;
 
-use cli::{Cli, Commands};
-// mod ordered_rayon;
 
+use cli::{Cli, Commands};
+
+/// Creates a `BufWriter` for the given output option. This allows for an output file to be passed
+/// or otherwise will default to using standard output.
+///
+/// If `output` is `Some`, it creates a file at the specified path and returns a `BufWriter` for it.
+/// If `output` is `None`, it returns a `BufWriter` for the standard output.
+///
+/// # Arguments
+///
+/// * `output` - An `Option` containing the path to the output file as a `String`.
+///
+/// # Returns
+///
+/// A `Result` containing a `BufWriter` that implements `Write`.
 fn get_writer(output: &Option<String>) -> Result<impl Write> {
     // get output as a BufWriter - equal to stdout if None
     let writer = BufWriter::new(match output {
@@ -121,6 +134,8 @@ fn try_main() -> Result<()> {
 fn main() {
     if let Err(err) = try_main() {
         error!("{}", err);
+
+        // report any errors that are produced
         err.chain()
             .skip(1)
             .for_each(|cause| error!("  because: {}", cause));

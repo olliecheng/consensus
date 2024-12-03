@@ -14,7 +14,23 @@ use thiserror::Error;
 use crate::file::FastqFile;
 use tempfile::tempfile_in;
 
-// returns the average PHRED quality of the read
+/// Writes a read record to the given CSV writer, and also returns the average PHRED quality
+/// score of the read.
+///
+/// # Arguments
+///
+/// * `wtr` - A mutable reference to a CSV writer.
+/// * `rec` - A reference to a `SequenceRecord` containing the read data.
+/// * `identifier` - A string slice representing the identifier of the read.
+/// * `position` - The position of the read.
+///
+/// # Returns
+///
+/// Returns a `Result` containing the average PHRED quality score of the read as an `f64`.
+///
+/// # Errors
+///
+/// This function will return an error if writing to the CSV writer fails.
 fn write_read<W: Write>(
     wtr: &mut Writer<W>,
     rec: &SequenceRecord,
@@ -44,6 +60,26 @@ fn write_read<W: Write>(
     Ok(phred_qual)
 }
 
+
+/// Iterates over lines in a FASTQ file, extracting barcodes using a regex
+/// and writing the results to a CSV writer.
+///
+/// # Arguments
+///
+/// * `reader` - A `BufReader` for the input FASTQ file.
+/// * `wtr` - A mutable reference to a CSV writer.
+/// * `re` - A reference to a `Regex` for extracting barcodes from read headers.
+/// * `skip_invalid_ids` - A boolean indicating whether to skip invalid IDs.
+/// * `info` - A mutable `FastqFile` struct containing information about the FASTQ file.
+///
+/// # Returns
+///
+/// Returns a `Result` containing an updated `FastqFile` struct which contains information about
+/// the file that was just read.
+///
+/// # Errors
+///
+/// This function will return an error if reading from the FASTQ file or writing to the CSV writer fails.
 fn iter_lines_with_regex<W: Write>(
     reader: BufReader<File>,
     wtr: &mut Writer<W>,
@@ -112,6 +148,26 @@ fn iter_lines_with_regex<W: Write>(
     Ok(info)
 }
 
+/// Iterates over lines in a FASTQ file, matching read identifiers with a cluster file instead of
+/// a header format, and writing the results to a CSV writer.
+///
+/// # Arguments
+///
+/// * `reader` - A `BufReader` for the input FASTQ file.
+/// * `wtr` - A mutable reference to a CSV writer.
+/// * `clusters` - A mutable reference to a CSV reader for the cluster file.
+/// * `skip_invalid_ids` - A boolean indicating whether to skip invalid IDs.
+/// * `info` - A mutable `FastqFile` struct containing information about the FASTQ file.
+///
+/// # Returns
+///
+/// Returns a `Result` containing an updated `FastqFile` struct which contains information about
+/// the file that was just read.
+///
+/// # Errors
+///
+/// This function will return an error if reading from the FASTQ file, reading from the cluster file,
+/// or writing to the CSV writer fails.
 fn iter_lines_with_cluster_file<W: Write>(
     reader: BufReader<File>,
     wtr: &mut Writer<W>,
@@ -129,8 +185,15 @@ fn iter_lines_with_cluster_file<W: Write>(
 
         let read_id = record[0].to_string();
         let identifier = match record.len() {
+            // in this case, there is just one identifier (no BC and UMI) so we read the first
+            // column directly as the 'identifier'
             2 => record[1].to_string(),
+
+            // in this case, there are two identifiers (i.e. BC and UMI) so we combine them to
+            // produce an 'identifier'
             3 => format!("{}_{}", &record[1], &record[2]),
+
+            // doesn't make sense
             _ => bail!(InvalidClusterRow {row: record.as_slice().to_string()})
         };
 
@@ -141,11 +204,15 @@ fn iter_lines_with_cluster_file<W: Write>(
 
 
     let mut fastq_reader = needletail::parser::FastqReader::new(reader);
+
+    // we store the total quality and length so that we can take an average at the end
     let mut total_quality = 0f64;
     let mut total_len = 0;
 
     while let Some(rec) = fastq_reader.next() {
         info.read_count += 1;
+
+        // print progress notification
         if info.read_count % 50000 == 0 {
             info!("Processed: {}", info.read_count);
         }
@@ -169,6 +236,7 @@ fn iter_lines_with_cluster_file<W: Write>(
 
     wtr.flush()?;
 
+    // compute summary statistics
     info.avg_qual = total_quality / (info.matched_read_count as f64);
     info.avg_len = (total_len as f64) / (info.matched_read_count as f64);
     info.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
@@ -176,6 +244,22 @@ fn iter_lines_with_cluster_file<W: Write>(
     Ok(info)
 }
 
+/// Extracts barcodes from a read header using a regex pattern.
+///
+/// # Arguments
+///
+/// * `header` - A string slice representing the read header.
+/// * `re` - A reference to a `Regex` for extracting barcodes from the header.
+/// * `pos` - The position of the read.
+///
+/// # Returns
+///
+/// Returns a `Result` containing a tuple with the number of captures and the
+/// concatenated barcode string (identifier).
+///
+/// # Errors
+///
+/// This function will return an error if the regex does not match the header.
 fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize, String)> {
     let Some(captures) = re.captures(header) else {
         bail!(IndexGenerationErr::NoMatch {
@@ -190,14 +274,34 @@ fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize
         .map(|m| m.as_str())
         .collect::<Vec<_>>();
 
-    Ok(
-        (
-            captures.len(),
-            captures.join("_"),
-        )
-    )
+    Ok((
+        captures.len(),
+        captures.join("_"),
+    ))
 }
 
+/// Constructs an index from a FASTQ file and writes the results to an output file.
+///
+/// # Notes
+/// This method will create a temporary file in the directory of the output file, and the OS
+/// will automatically clean up this file after execution.
+///
+/// # Arguments
+///
+/// * `infile` - A string slice representing the path to the input FASTQ file.
+/// * `outfile` - A string slice representing the path to the output file.
+/// * `barcode_regex` - A string slice representing the regex pattern for extracting barcodes.
+/// * `skip_unmatched` - A boolean indicating whether to skip unmatched reads.
+/// * `clusters` - An optional string representing the path to the cluster file.
+///
+/// # Returns
+///
+/// Returns a `Result` indicating success or failure.
+///
+/// # Errors
+///
+/// This function will return an error if reading from the input file, writing to the output file,
+/// or processing the data fails.
 pub fn construct_index(
     infile: &str,
     outfile: &str,
@@ -208,9 +312,11 @@ pub fn construct_index(
     // time everything!
     let now = std::time::Instant::now();
 
+    // open file
     let f = File::open(infile).expect("File could not be opened");
     let reader = BufReader::new(f);
 
+    // populate with some default information
     let file_info = FastqFile {
         nailpolish_version: crate::cli::VERSION.to_string(),
         file_path: std::fs::canonicalize(infile)?.display().to_string(),
@@ -218,7 +324,12 @@ pub fn construct_index(
         ..FastqFile::default()
     };
 
-    let mut temp_file = tempfile_in("./")?;
+    // get the directory of the output file
+    let mut tempfile_dir = std::path::absolute(outfile)?;
+    tempfile_dir.pop();
+
+    // create a temporary file at this directory
+    let mut temp_file = tempfile_in(tempfile_dir)?;
     let mut wtr = WriterBuilder::new()
         .delimiter(b'\t')
         .from_writer(&mut temp_file);
@@ -231,10 +342,15 @@ pub fn construct_index(
         "len"
     ])?;
 
-
+    // parse the file
     let re = Regex::new(barcode_regex)?;
     let mut result = match clusters {
-        None => { iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, file_info) }
+        // no cluster file has been used
+        None => {
+            iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, file_info)
+        }
+
+        // cluster file is being used
         Some(filepath) => {
             let mut cluster_rdr = csv::ReaderBuilder::new()
                 .delimiter(b';')

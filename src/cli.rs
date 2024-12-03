@@ -106,7 +106,8 @@ pub enum Commands {
         report_original_reads: bool,
     },
 
-    /// Tag each read by its UMI group, and write to a .fastq file
+    /// Tag each read by its UMI group, and write to a .fastq file. Due to the large amounts of
+    /// random file access required, this may take a while.
     #[command(arg_required_else_help = true)]
     Group {
         /// the index file
