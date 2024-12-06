@@ -1,5 +1,6 @@
 use crate::duplicates::{DuplicateMap, RecordIdentifier};
 use anyhow::Context;
+use needletail::parser::SequenceRecord;
 use needletail::{parser::FastqReader, FastxReader};
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
@@ -13,6 +14,18 @@ pub struct Record {
     pub id: String,
     pub seq: String,
     pub qual: String,
+}
+
+impl TryFrom<SequenceRecord<'_>> for Record {
+    type Error = std::string::FromUtf8Error;
+
+    fn try_from(rec: SequenceRecord) -> Result<Self, Self::Error> {
+        Ok(Record {
+            id: String::from_utf8(rec.id().to_vec())?,
+            seq: String::from_utf8(rec.seq().to_vec())?,
+            qual: String::from_utf8(rec.qual().unwrap_or(&[]).to_vec())?,
+        })
+    }
 }
 
 pub struct UMIGroup {
@@ -60,11 +73,7 @@ pub fn get_read_at_position(
 
     let rec = reader.next().context("Unexpected EOF")??;
 
-    Ok(Record {
-        id: String::from_utf8(rec.id().to_vec())?,
-        seq: String::from_utf8(rec.seq().to_vec())?,
-        qual: String::from_utf8(rec.qual().unwrap_or(&[]).to_vec())?,
-    })
+    Record::try_from(rec).context("Could not perform utf8 conversions")
 }
 
 
