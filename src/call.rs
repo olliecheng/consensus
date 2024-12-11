@@ -44,14 +44,18 @@ pub fn consensus(
 ) -> Result<()> {
     rayon::ThreadPoolBuilder::new().num_threads(threads).build_global()?;
 
-    let duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?;
+    let mut duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?
+        .peekable();
 
     let chunk_size = 100usize * threads;
 
     let mut chunk_buffer = Vec::with_capacity(chunk_size);
     let mut duplicate_buffer = Vec::new();
 
-    for (idx, elem) in duplicate_iterator.enumerate() {
+    let mut idx = 0;
+    while let Some(elem) = duplicate_iterator.next() {
+        idx += 1;
+
         if (idx > 0) && (idx % 100000 == 0) {
             eprintln!("Called {} reads...", idx);
         }
@@ -67,8 +71,10 @@ pub fn consensus(
             duplicate_buffer.push(group);
         }
 
-        // if we have filled the buffer, then, process it
-        if chunk_buffer.len() == chunk_size {
+        let end_of_buffer = duplicate_iterator.peek().is_none();
+
+        // if we have filled the buffer OR are at the end, process this
+        if (chunk_buffer.len() == chunk_size) || end_of_buffer {
             let mut duplicate_output = Vec::with_capacity(duplicate_buffer.len());
 
             // generate new records into a separate buffer
