@@ -112,8 +112,8 @@ pub fn iter_duplicates(
     // we create two readers, one for sequential access and one for random
     let file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
 
-    // capacity of 64 KiB
-    let mut file_sequential = BufReader::with_capacity(64 * 1024, file);
+    // capacity of 128 KiB
+    let mut file_sequential = BufReader::with_capacity(128 * 1024, file);
 
     // no need for a buffered reader here, as we are only doing random access
     let mut file_random = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
@@ -134,6 +134,15 @@ pub fn iter_duplicates(
             let mut total_qual = 0u32;
 
             for pos in positions.iter() {
+                if pos.length > 30000 {
+                    eprintln!(
+                        "Skipping at position {} due to length {}",
+                        pos.pos,
+                        pos.length
+                    );
+                    continue;
+                }
+
                 let read = if single {
                     get_read_at_position(&mut file_sequential, pos)
                 } else {

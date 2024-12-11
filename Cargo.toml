@@ -27,6 +27,7 @@ spoa = { git = "https://github.com/olliecheng/spoa-rs" }
 tempfile = "3.14.0"
 thiserror = "1.0.64"
 predicates = "3.1.2"
+itertools = "0.13.0"
 
 [[bin]]
 name = "nailpolish"
@@ -38,5 +39,6 @@ image = "ghcr.io/olliecheng/images:cross-x86-centos"
 [profile.test]
 opt-level = 3
 
-[profile.release]
-debug = true
+#
+#[profile.release]
+#debug = true

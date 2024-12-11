@@ -129,7 +129,6 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics,
         let record: IndexRecord = read?;
         stats.total_reads += 1;
 
-
         let id = RecordIdentifier::from_string(&record.id);
 
         let rec_pos = RecordPosition {

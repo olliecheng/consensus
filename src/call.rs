@@ -1,7 +1,10 @@
 use crate::duplicates::DuplicateMap;
-use crate::io::{iter_duplicates, until_err, ReadType, Record, UMIGroup};
+use crate::io::{iter_duplicates, ReadType, Record, UMIGroup};
 
 use spoa::{AlignmentEngine, AlignmentType};
+
+use itertools::Itertools;
+use rayon::prelude::*;
 
 use std::io::prelude::*;
 use std::io::Cursor;
@@ -9,7 +12,11 @@ use std::io::Cursor;
 use anyhow::Result;
 
 use crate::io;
-use pariter::IteratorExt as _;
+
+enum GroupType {
+    Simplex(UMIGroup),
+    Duplex(usize),
+}
 
 
 /// Generates consensus sequences from the input in a thread-stable manner.
@@ -36,43 +43,56 @@ pub fn consensus(
     duplicates_only: bool,
     output_originals: bool,
 ) -> Result<()> {
-    // Start with a placeholder error object. This will be mutated if there are errors during
-    // iteration through the reads.
-    let mut err = Ok(());
+    rayon::ThreadPoolBuilder::new().num_threads(threads).build_global()?;
 
-    let cache_size = threads * 3;
+    let duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?;
 
-    let result = crossbeam::thread::scope(|scope| -> Result<()> {
-        let duplicate_iterator = iter_duplicates(
-            input,
-            duplicates,
-            duplicates_only,
-        )?;
+    const CHUNK_SIZE: usize = 500;
+    let mut chunk_buffer = Vec::with_capacity(CHUNK_SIZE);
+    let mut duplicate_buffer = Vec::new();
 
-        // convert this sequential iterator into a parallel one for consensus calling
-        duplicate_iterator
-            .scan(&mut err, until_err) // iterate until an error is found, writing into &err
-            .parallel_map_scoped_custom(
-                scope,
-                |o| o.threads(threads).buffer_size(cache_size),
-                |r| call_record(r, output_originals),
-            )
-            // write every read in a global thread in order
-            .for_each(|output| {
-                writer.write_all(&output).unwrap();
-            });
+    for elem in duplicate_iterator {
+        // ensure that there was no issue in reading
+        let group = elem?;
 
-        Ok(())
-    });
+        let single = group.records.len() == 1;
+        if single && !duplicates_only {
+            chunk_buffer.push(GroupType::Simplex(group));
+        } else {
+            chunk_buffer.push(GroupType::Duplex(duplicate_buffer.len()));
+            duplicate_buffer.push(group);
+        }
 
-    // Threads can't send regular errors well between them, so
-    // if there is an issue here we panic
-    result.unwrap_or_else(|e| {
-        error!("Caught a panic which is unrecoverable");
-        std::panic::resume_unwind(e)
-    })?;
+        // if we have filled the buffer, then, process it
+        if chunk_buffer.len() == CHUNK_SIZE {
+            let mut duplicate_output = Vec::with_capacity(duplicate_buffer.len());
 
-    err
+            // generate new records into a separate buffer
+            duplicate_buffer
+                .par_iter()
+                .map(|grp| call_record(grp, output_originals))
+                .collect_into_vec(&mut duplicate_output);
+
+            for e in chunk_buffer.iter() {
+                let output = match e {
+                    GroupType::Simplex(group) => {
+                        &call_record(group, output_originals)
+                    }
+                    GroupType::Duplex(idx) => {
+                        &duplicate_output[*idx]
+                    }
+                };
+
+                writer.write_all(output)?;
+            }
+
+            // empty the buffer
+            duplicate_buffer.clear();
+            chunk_buffer.clear();
+        }
+    }
+
+    Ok(())
 }
 
 /// Generates a consensus sequence from a group of reads.
@@ -86,7 +106,7 @@ pub fn consensus(
 /// # Returns
 ///
 /// A `String` containing the consensus sequence in FASTQ format.
-fn call_record(group: UMIGroup, output_originals: bool) -> Vec<u8> {
+fn call_record(group: &UMIGroup, output_originals: bool) -> Vec<u8> {
     let length = group.records.len();
     let mut output = Cursor::new(Vec::new());
 
