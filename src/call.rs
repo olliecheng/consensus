@@ -46,9 +46,9 @@ pub fn consensus(
 
     let duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?;
 
-    const CHUNK_SIZE: usize = 500;
+    let chunk_size = 100usize * threads;
 
-    let mut chunk_buffer = Vec::with_capacity(CHUNK_SIZE);
+    let mut chunk_buffer = Vec::with_capacity(chunk_size);
     let mut duplicate_buffer = Vec::new();
 
     for (idx, elem) in duplicate_iterator.enumerate() {
@@ -68,7 +68,7 @@ pub fn consensus(
         }
 
         // if we have filled the buffer, then, process it
-        if chunk_buffer.len() == CHUNK_SIZE {
+        if chunk_buffer.len() == chunk_size {
             let mut duplicate_output = Vec::with_capacity(duplicate_buffer.len());
 
             // generate new records into a separate buffer
