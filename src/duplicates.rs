@@ -1,12 +1,23 @@
 use crate::file::FastqFile;
+use crate::index::IndexRecord;
 use anyhow::{Context, Result};
 use csv::ReaderBuilder;
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 
-pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<usize>>;
+/// A struct representing the position of a record.
+///
+/// # Fields
+///
+/// * `pos` - The position of the record in the input file
+/// * `length` - The length of the record, in bytes
+pub struct RecordPosition {
+    pub pos: usize,
+    pub length: usize,
+}
+pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<RecordPosition>>;
 
 /// A struct representing a record identifier with a head and a tail.
 ///
@@ -14,7 +25,7 @@ pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<usize>>;
 ///
 /// * `head` - The head part of the record identifier.
 /// * `tail` - The tail part of the record identifier.
-#[derive(Eq, PartialEq, Hash, Debug)]
+#[derive(Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
 pub struct RecordIdentifier {
     pub head: String,
     pub tail: String,
@@ -48,7 +59,7 @@ impl RecordIdentifier {
     /// # Returns
     ///
     /// A `RecordIdentifier` with the head and tail parts extracted from the input string.
-    fn from_string(s: &str) -> Self {
+    pub fn from_string(s: &str) -> Self {
         let split_loc = match s.find('_') {
             Some(v) => v,
             None => s.len() - 1
@@ -87,7 +98,7 @@ pub struct DuplicateStatistics {
 ///
 /// This function will return an error if the file cannot be opened or read, or if the file format is incorrect.
 pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics, FastqFile)> {
-    let mut map = IndexMap::<RecordIdentifier, Vec<usize>>::new();
+    let mut map = DuplicateMap::new();
     let mut stats = DuplicateStatistics {
         total_reads: 0,
         duplicate_reads: 0,
@@ -114,18 +125,21 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics,
         .from_reader(&mut file);
 
     // Parse each row of the reader
-    for read in reader.records() {
-        let record = read?;
+    for read in reader.deserialize() {
+        let record: IndexRecord = read?;
         stats.total_reads += 1;
 
 
-        let id = RecordIdentifier::from_string(&record[0]);
+        let id = RecordIdentifier::from_string(&record.id);
 
-        let index = record[1].parse()?;
+        let rec_pos = RecordPosition {
+            pos: record.pos,
+            length: record.rec_len,
+        };
         if let Some(v) = map.get_mut(&id) {
-            v.push(index);
+            v.push(rec_pos);
         } else {
-            map.insert(id, vec![index]);
+            map.insert(id, vec![rec_pos]);
         }
     }
 

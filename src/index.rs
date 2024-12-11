@@ -5,14 +5,25 @@ use std::io::BufReader;
 use csv::{Reader, Writer, WriterBuilder};
 use regex::Regex;
 
-use crate::generate_index::IndexGenerationErr::{InvalidClusterRow, RowNotInClusters};
+use crate::index::IndexGenerationErr::{InvalidClusterRow, RowNotInClusters};
 use anyhow::{bail, Context, Result};
 use needletail::parser::SequenceRecord;
 use needletail::FastxReader;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::duplicates::RecordIdentifier;
 use crate::file::FastqFile;
 use tempfile::tempfile_in;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IndexRecord {
+    pub id: String,
+    pub pos: usize,
+    pub avg_qual: f64,
+    pub n_bases: usize,
+    pub rec_len: usize,
+}
 
 /// Writes a read record to the given CSV writer, and also returns the average PHRED quality
 /// score of the read.
@@ -34,7 +45,7 @@ use tempfile::tempfile_in;
 fn write_read<W: Write>(
     wtr: &mut Writer<W>,
     rec: &SequenceRecord,
-    identifier: &str,
+    identifier: String,
     position: usize,
 ) -> Result<f64> {
     let len = rec.num_bases();
@@ -49,14 +60,21 @@ fn write_read<W: Write>(
     // https://en.wikipedia.org/wiki/Phred_quality_score
     let phred_qual = avg_qual - 33f64;
 
-    wtr.write_record(
-        [
-            identifier,
-            &position.to_string(),
-            &format!("{:.2}", phred_qual),
-            &len.to_string()
-        ]
+    // round to 2dp
+    let phred_qual = (phred_qual * 100.0).round() / 100.0;
+
+    // eprintln!("Buffer:\n{}---", std::str::from_utf8(rec.all()).unwrap());
+
+    wtr.serialize(
+        IndexRecord {
+            id: identifier,
+            pos: position,
+            avg_qual: phred_qual,
+            n_bases: len,
+            rec_len: rec.all().len() + 1,
+        }
     )?;
+
     Ok(phred_qual)
 }
 
@@ -126,7 +144,7 @@ fn iter_lines_with_regex<W: Write>(
                     }
                 }
 
-                total_quality += write_read(wtr, &rec, &identifier, position)?;
+                total_quality += write_read(wtr, &rec, identifier.to_string(), position)?;
                 total_len += rec.num_bases();
                 info.matched_read_count += 1;
             }
@@ -230,7 +248,7 @@ fn iter_lines_with_cluster_file<W: Write>(
         };
         info.matched_read_count += 1;
 
-        total_quality += write_read(wtr, &rec, identifier, position)?;
+        total_quality += write_read(wtr, &rec, identifier.clone(), position)?;
         total_len += rec.num_bases();
     }
 
@@ -260,7 +278,11 @@ fn iter_lines_with_cluster_file<W: Write>(
 /// # Errors
 ///
 /// This function will return an error if the regex does not match the header.
-fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize, String)> {
+fn extract_bc_from_header(
+    header: &str,
+    re: &Regex,
+    pos: usize,
+) -> Result<(usize, RecordIdentifier)> {
     let Some(captures) = re.captures(header) else {
         bail!(IndexGenerationErr::NoMatch {
             header: String::from(header.trim()),
@@ -268,6 +290,7 @@ fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize
             pos
         });
     };
+
     let captures = captures.iter()
         .skip(1)
         .flatten()
@@ -276,7 +299,10 @@ fn extract_bc_from_header(header: &str, re: &Regex, pos: usize) -> Result<(usize
 
     Ok((
         captures.len(),
-        captures.join("_"),
+        RecordIdentifier {
+            head: captures[0].to_string(),
+            tail: captures[1..].join("_"),
+        }
     ))
 }
 
@@ -335,12 +361,13 @@ pub fn construct_index(
         .from_writer(&mut temp_file);
 
     // write headers and file information
-    wtr.write_record([
-        "id",
-        "pos",
-        "avg_qual",
-        "len"
-    ])?;
+    // wtr.write_record([
+    //     "id",
+    //     "pos",
+    //     "avg_qual",
+    //     "n_bases",
+    //     "rec_len"
+    // ])?;
 
     // parse the file
     let re = Regex::new(barcode_regex)?;

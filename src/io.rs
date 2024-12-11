@@ -1,9 +1,9 @@
-use crate::duplicates::{DuplicateMap, RecordIdentifier};
+use crate::duplicates::{DuplicateMap, RecordIdentifier, RecordPosition};
 use anyhow::Context;
 use needletail::parser::SequenceRecord;
 use needletail::{parser::FastqReader, FastxReader};
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 
 pub enum ReadType {
     Consensus,
@@ -59,19 +59,31 @@ pub struct UMIGroup {
 /// let record = get_read_at_position(&mut file, 12345)?;
 /// println!("Record ID: {}", record.id);
 /// ```
-pub fn get_read_at_position(
-    file: &mut File,
-    position: u64,
+pub fn get_read_at_position<R: Read + Seek + Send>(
+    // file: &mut File,
+    reader: &mut R,
+    // file_sequential: &mut dyn Read,
+    // file_random: &mut dyn Read,
+    pos: &RecordPosition,
 ) -> anyhow::Result<Record> {
     // go to the position of the record
-    file.seek(SeekFrom::Start(position)).with_context(|| {
-        format!("Unable to seek file at position {position}")
+    reader.seek(SeekFrom::Start(pos.pos as u64)).with_context(|| {
+        format!("Unable to seek file at position {}", pos.pos)
     })?;
 
-    // create a needletail 'reader' with the file at this location
-    let mut reader = FastqReader::new(file);
+    // read the exact number of bytes
+    // let mut bytes = Vec::with_capacity(pos.length);
+    let mut bytes = vec![0; pos.length];
+    reader.read_exact(&mut bytes).with_context(|| {
+        format!("Could not read {} lines at position {}", pos.length, pos.pos)
+    })?;
 
-    let rec = reader.next().context("Unexpected EOF")??;
+    // eprintln!("fastq: {}", std::str::from_utf8(&bytes)?);
+
+    // create a needletail 'reader' with the file at this location
+    let mut fq_reader = FastqReader::new(&bytes[..]);
+
+    let rec = fq_reader.next().context("Unexpected EOF")??;
 
     Record::try_from(rec).context("Could not perform utf8 conversions")
 }
@@ -97,16 +109,24 @@ pub fn iter_duplicates(
     duplicates: DuplicateMap,
     duplicates_only: bool,
 ) -> anyhow::Result<impl Iterator<Item=anyhow::Result<UMIGroup>> + '_> {
-    let mut file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
+    // we create two readers, one for sequential access and one for random
+    let file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
+
+    // capacity of 64 KiB
+    let mut file_sequential = BufReader::with_capacity(64 * 1024, file);
+
+    // no need for a buffered reader here, as we are only doing random access
+    let mut file_random = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
 
     Ok(duplicates
         .into_iter()
         .enumerate()
         // first, read from the file (sequential)
         .filter_map(move |(index, (id, positions))| -> Option<anyhow::Result<UMIGroup>> {
+            let single = positions.len() == 1;
             // if this UMI group is a single AND we only want to output duplicates,
             // this is skipped over
-            if (positions.len() == 1) && (duplicates_only) {
+            if single && duplicates_only {
                 return None;
             }
 
@@ -114,7 +134,13 @@ pub fn iter_duplicates(
             let mut total_qual = 0u32;
 
             for pos in positions.iter() {
-                match get_read_at_position(&mut file, *pos as u64) {
+                let read = if single {
+                    get_read_at_position(&mut file_sequential, pos)
+                } else {
+                    get_read_at_position(&mut file_random, pos)
+                };
+
+                match read {
                     Ok(record) => {
                         total_qual += record.qual
                             .as_bytes()

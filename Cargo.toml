@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.86"
+anyhow = { version = "1.0.86", features = ["backtrace"] }
 assert_cmd = "2.0.16"
 assert_fs = "1.1.2"
 bio = "1.6.0"
@@ -34,3 +34,9 @@ name = "nailpolish"
 [workspace.metadata.cross.target.x86_64-unknown-linux-gnu]
 # use CentOS7-compatible builder (supports libc 2.17)
 image = "ghcr.io/olliecheng/images:cross-x86-centos"
+
+[profile.test]
+opt-level = 3
+
+[profile.release]
+debug = true

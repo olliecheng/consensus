@@ -15,7 +15,7 @@ use clap::Parser;
 
 mod call;
 mod duplicates;
-mod generate_index;
+mod index;
 mod cli;
 mod preset;
 mod file;
@@ -84,7 +84,7 @@ fn try_main() -> Result<()> {
                 }
             };
 
-            generate_index::construct_index(file, index, &barcode_regex, *skip_unmatched, clusters)?;
+            index::construct_index(file, index, &barcode_regex, *skip_unmatched, clusters)?;
             info!("Completed index generation to {index}");
         }
         Commands::Call {
@@ -133,7 +133,7 @@ fn try_main() -> Result<()> {
 
 fn main() {
     if let Err(err) = try_main() {
-        error!("{}", err);
+        error!("{:?}", err);
 
         // report any errors that are produced
         err.chain()
