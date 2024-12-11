@@ -8,6 +8,7 @@ use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 pub enum ReadType {
     Consensus,
     Original,
+    Ignored,
 }
 
 pub struct Record {
@@ -37,6 +38,8 @@ pub struct UMIGroup {
     pub records: Vec<Record>,
     /// The average PHRED quality of the UMI group
     pub avg_qual: f64,
+    /// Whether we should NOT consensus call this UMI group, because of quality/other issues
+    pub ignore: bool,
 }
 
 /// Retrieves a FASTQ record from a file at a specified position.
@@ -130,17 +133,12 @@ pub fn iter_duplicates(
                 return None;
             }
 
-            let mut rec = UMIGroup { id, index, records: Vec::new(), avg_qual: 0.0 };
+            let mut rec = UMIGroup { id, index, records: Vec::new(), avg_qual: 0.0, ignore: false };
             let mut total_qual = 0u32;
 
             for pos in positions.iter() {
                 if pos.length > 30000 {
-                    eprintln!(
-                        "Skipping at position {} due to length {}",
-                        pos.pos,
-                        pos.length
-                    );
-                    continue;
+                    rec.ignore = true;
                 }
 
                 let read = if single {
@@ -220,8 +218,9 @@ pub fn write_read(
     fastq: bool,
 ) -> std::io::Result<()> {
     let read_type_label = match read_type {
-        ReadType::Consensus => { "CONSENSUS" }
-        ReadType::Original => { "ORIGINAL" }
+        ReadType::Consensus => { "CON" }
+        ReadType::Original => { "ORIG" }
+        ReadType::Ignored => { "IGN" }
     };
 
     if fastq {

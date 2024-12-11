@@ -12,8 +12,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Test
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: "test"
+          target: "x86_64-unknown-linux-gnu"
+
   build-linux:
     runs-on: ubuntu-latest
+    needs: test
+
     steps:
       - uses: actions/checkout@v3
 
@@ -23,6 +36,7 @@ jobs:
           command: "build"
           target: "x86_64-unknown-linux-gnu"
           args: "--release"
+
       - name: Upload Linux Binary
         uses: actions/upload-artifact@v3
         with:

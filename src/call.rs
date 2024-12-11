@@ -3,7 +3,6 @@ use crate::io::{iter_duplicates, ReadType, Record, UMIGroup};
 
 use spoa::{AlignmentEngine, AlignmentType};
 
-use itertools::Itertools;
 use rayon::prelude::*;
 
 use std::io::prelude::*;
@@ -48,15 +47,20 @@ pub fn consensus(
     let duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?;
 
     const CHUNK_SIZE: usize = 500;
+
     let mut chunk_buffer = Vec::with_capacity(CHUNK_SIZE);
     let mut duplicate_buffer = Vec::new();
 
-    for elem in duplicate_iterator {
+    for (idx, elem) in duplicate_iterator.enumerate() {
+        if (idx > 0) && (idx % 100000 == 0) {
+            eprintln!("Called {} reads...", idx);
+        }
+
         // ensure that there was no issue in reading
         let group = elem?;
 
         let single = group.records.len() == 1;
-        if single && !duplicates_only {
+        if (single && !duplicates_only) || group.ignore {
             chunk_buffer.push(GroupType::Simplex(group));
         } else {
             chunk_buffer.push(GroupType::Duplex(duplicate_buffer.len()));
@@ -78,6 +82,7 @@ pub fn consensus(
                     GroupType::Simplex(group) => {
                         &call_record(group, output_originals)
                     }
+                    // if this is a duplex read, then use the buffer
                     GroupType::Duplex(idx) => {
                         &duplicate_output[*idx]
                     }
@@ -110,6 +115,15 @@ fn call_record(group: &UMIGroup, output_originals: bool) -> Vec<u8> {
     let length = group.records.len();
     let mut output = Cursor::new(Vec::new());
 
+    // process ignored reads first
+    if group.ignore {
+        for record in group.records.iter() {
+            io::write_read(&mut output, record, &group, ReadType::Ignored, false).unwrap();
+        }
+        return output.into_inner();
+    }
+
+
     // for singletons, the read is its own consensus
     if length == 1 {
         let record = &group.records[0];
@@ -141,7 +155,7 @@ fn call_record(group: &UMIGroup, output_originals: bool) -> Vec<u8> {
         .expect("spoa module did not produce valid utf-8");
 
     let id_string = format!(
-        "consensus_{} avg_input_quality={:.2}",
+        "umi_group_id={} avg_input_quality={:.2}",
         group.index,
         group.avg_qual
     );

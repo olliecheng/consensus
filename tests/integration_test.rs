@@ -1,7 +1,6 @@
 use assert_cmd::Command;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
-use std::path::Path;
 
 const SAMPLE_FASTQ: &str = "tests/data/scmixology2_sample.fastq";
 
@@ -62,9 +61,18 @@ fn consensus_1t() {
         .assert()
         .success();
 
-    let pred_file = predicate::path::eq_file(Path::new("tests/correct/consensus.fastq"));
+    const CORRECT_FILE: &str = "tests/correct/consensus.fasta";
+    let cmp_cmd = format!(
+        "diff {} {}",
+        temp.path().to_str().unwrap(),
+        CORRECT_FILE
+    );
 
-    pred_file.eval(temp.path());
+    let _ = Command::new("bash")
+        .arg("-c")
+        .arg(&cmp_cmd)
+        .unwrap();
+
     temp.close().unwrap();
 }
 
@@ -85,8 +93,17 @@ fn consensus_4t() {
         .assert()
         .success();
 
-    let pred_file = predicate::path::eq_file(Path::new("tests/correct/consensus.fastq"));
+    const CORRECT_FILE: &str = "tests/correct/consensus.fasta";
+    let cmp_cmd = format!(
+        "diff {} {}",
+        temp.path().to_str().unwrap(),
+        CORRECT_FILE
+    );
 
-    pred_file.eval(temp.path());
+    let _ = Command::new("bash")
+        .arg("-c")
+        .arg(&cmp_cmd)
+        .unwrap();
+
     temp.close().unwrap();
 }
