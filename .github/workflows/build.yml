@@ -13,7 +13,7 @@ env:
 
 jobs:
   test:
-    name: Test Suite
+    name: test-linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -54,6 +54,8 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    needs: test
+
     steps:
       - uses: actions/checkout@v3
 
