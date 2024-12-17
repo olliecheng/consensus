@@ -27,7 +27,7 @@ wget https://github.com/DavidsonGroup/nailpolish/releases/download/sample-fastq-
 
 ## Indexation
 
-_For more information, see [nailpolish index](./generate-index.md)._
+_For more information, see [nailpolish index](commands/generate-index.md)._
 
 By default, nailpolish expects the barcode and UMI to be in the `@BC_UMI` format at the start of the header.
 Alternative barcode and UMI formats can be provided through either a preset (one of `bc-umi`, `umi-tools`, `illumina`)
@@ -40,7 +40,7 @@ nailpolish index --index index.tsv scmixology2_sample.fastq
 
 ## Summary of duplicate count
 
-_For more information, see [nailpolish summary](./summarize.md)._
+_For more information, see [nailpolish summary](commands/summarize.md)._
 
 A .html file can be generated to summarise some key statistics about the input reads.
 The output file is written to `summary.html` by default.
@@ -53,7 +53,7 @@ nailpolish summary index.tsv
 
 ## Consensus call duplicates
 
-_For more information, see [nailpolish call](./call.md)._
+_For more information, see [nailpolish call](commands/call.md)._
 
 By consensus calling duplicates, only one read is returned per UMI group.
 For singleton reads, there is no change
@@ -68,4 +68,4 @@ nailpolish call \
 ```
 
 There are alternative parameters which can be passed to configure the output.
-See the _[nailpolish call](./call.md)_ documentation for more.
+See the _[nailpolish call](commands/call.md)_ documentation for more.
