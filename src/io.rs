@@ -2,15 +2,19 @@ use crate::duplicates::{DuplicateMap, RecordIdentifier, RecordPosition};
 use anyhow::Context;
 use needletail::parser::SequenceRecord;
 use needletail::{parser::FastqReader, FastxReader};
+use std::fmt::Write as FmtWrite;
+// needed for write! to be implemented on Strings
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 
 pub enum ReadType {
     Consensus,
+    Single,
     Original,
     Ignored,
 }
 
+#[derive(Clone)]
 pub struct Record {
     pub id: String,
     pub seq: String,
@@ -29,6 +33,60 @@ impl TryFrom<SequenceRecord<'_>> for Record {
     }
 }
 
+impl Record {
+    pub fn write_fastq(&self, writer: &mut impl Write) -> Result<(), std::io::Error> {
+        write!(
+            writer,
+            "@{}\n{}\n+\n{}",
+            self.id,
+            self.seq,
+            self.qual
+        )
+    }
+
+    pub fn write_fasta(&self, writer: &mut impl Write) -> Result<(), std::io::Error> {
+        write!(
+            writer,
+            ">{}\n{}",
+            self.id,
+            self.seq
+        )
+    }
+
+    /// Adds metadata to the record identifier through an in-place modify.
+    ///
+    /// # Arguments
+    ///
+    /// * `umi_group` - The UMI group identifier.
+    /// * `read_type` - The type of read (Consensus, Original, Ignored).
+    /// * `group_idx` - The index of the read in the group.
+    /// * `group_size` - The size of the group.
+    /// * `avg_qual` - The average quality score of the group.
+    pub fn add_metadata(
+        &mut self,
+        umi_group: usize,
+        read_type: ReadType,
+        group_idx: usize,
+        group_size: usize,
+        avg_qual: f64,
+    ) {
+        let read_type_label = match read_type {
+            ReadType::Consensus => { &format!("CON_{group_size}") }
+            ReadType::Single => { "SIN" }
+            ReadType::Original => { &format!("ORIG_{group_idx}_OF_{group_size}") }
+            ReadType::Ignored => { "IGN" }
+        };
+
+        // safe to unwrap because this never returns an error
+        //   https://github.com/rust-lang/rust/blob/1.47.0/library/alloc/src/string.rs#L2414-L2427
+        // ">{} UG:i:{} BX:Z:{} UT:Z:{}_{}\n{}",
+        write!(
+            self.id,
+            " UG:i:{umi_group} UT:Z:{read_type_label} QL:f:{avg_qual:.2}"
+        ).expect("String writing should not error")
+    }
+}
+
 pub struct UMIGroup {
     /// The "Identifier" of this group, typically a "BC_UMI" string
     pub id: RecordIdentifier,
@@ -40,6 +98,7 @@ pub struct UMIGroup {
     pub avg_qual: f64,
     /// Whether we should NOT consensus call this UMI group, because of quality/other issues
     pub ignore: bool,
+    pub consensus: Option<Record>,
 }
 
 /// Retrieves a FASTQ record from a file at a specified position.
@@ -133,7 +192,15 @@ pub fn iter_duplicates(
                 return None;
             }
 
-            let mut rec = UMIGroup { id, index, records: Vec::new(), avg_qual: 0.0, ignore: false };
+            let mut rec = UMIGroup {
+                id,
+                index,
+                records: Vec::new(),
+                avg_qual: 0.0,
+                ignore: false,
+                consensus: None,
+            };
+
             let mut total_qual = 0u32;
 
             for pos in positions.iter() {
@@ -221,6 +288,7 @@ pub fn write_read(
         ReadType::Consensus => { "CON" }
         ReadType::Original => { "ORIG" }
         ReadType::Ignored => { "IGN" }
+        ReadType::Single => todo!()
     };
 
     if fastq {

@@ -6,17 +6,13 @@ use spoa::{AlignmentEngine, AlignmentType};
 use rayon::prelude::*;
 
 use std::io::prelude::*;
-use std::io::Cursor;
 
 use anyhow::Result;
 
-use crate::io;
-
 enum GroupType {
-    Simplex(UMIGroup),
+    Simplex(usize),
     Duplex(usize),
 }
-
 
 /// Generates consensus sequences from the input in a thread-stable manner.
 ///
@@ -42,15 +38,18 @@ pub fn consensus(
     duplicates_only: bool,
     output_originals: bool,
 ) -> Result<()> {
-    rayon::ThreadPoolBuilder::new().num_threads(threads).build_global()?;
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build_global()?;
 
-    let mut duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?
-        .peekable();
+    let mut duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?.peekable();
 
     let chunk_size = 100usize * threads;
 
-    let mut chunk_buffer = Vec::with_capacity(chunk_size);
-    let mut duplicate_buffer = Vec::new();
+    // this vector stores the indexes of each group within the buf_duplicates and buf_single buffers
+    let mut buf_locations = Vec::with_capacity(chunk_size);
+    let mut buf_duplicates = Vec::new();
+    let mut buf_single = Vec::new();
 
     let mut idx = 0;
     while let Some(elem) = duplicate_iterator.next() {
@@ -65,41 +64,59 @@ pub fn consensus(
 
         let single = group.records.len() == 1;
         if (single && !duplicates_only) || group.ignore {
-            chunk_buffer.push(GroupType::Simplex(group));
+            buf_locations.push(GroupType::Simplex(buf_single.len()));
+            buf_single.push(group)
         } else {
-            chunk_buffer.push(GroupType::Duplex(duplicate_buffer.len()));
-            duplicate_buffer.push(group);
+            buf_locations.push(GroupType::Duplex(buf_duplicates.len()));
+            buf_duplicates.push(group);
         }
 
         let end_of_buffer = duplicate_iterator.peek().is_none();
 
-        // if we have filled the buffer OR are at the end, process this
-        if (chunk_buffer.len() == chunk_size) || end_of_buffer {
-            let mut duplicate_output = Vec::with_capacity(duplicate_buffer.len());
+        // if we have filled the buffer OR are at the end, process this chunk
+        if (buf_locations.len() == chunk_size) || end_of_buffer {
+            // single records are not multithreaded to save on IPC costs;
+            // use rayon to multithread duplicate buffer record calling
+            buf_single.iter_mut().for_each(call_record);
+            buf_duplicates.par_iter_mut().for_each(call_record);
 
-            // generate new records into a separate buffer
-            duplicate_buffer
-                .par_iter()
-                .map(|grp| call_record(grp, output_originals))
-                .collect_into_vec(&mut duplicate_output);
+            for (pos, loc) in buf_locations.iter().enumerate() {
+                let group = match loc {
+                    GroupType::Simplex(i) => buf_single.get_mut(*i),
+                    GroupType::Duplex(i) => buf_duplicates.get_mut(*i),
+                }
+                .expect("Index is invalid; should not occur");
 
-            for e in chunk_buffer.iter() {
-                let output = match e {
-                    GroupType::Simplex(group) => {
-                        &call_record(group, output_originals)
+                // output original reads as well, if requested
+                if matches!(loc, GroupType::Duplex(_)) && output_originals {
+                    let group_size = group.records.len();
+                    for (idx, r) in group.records.iter_mut().enumerate() {
+                        r.add_metadata(
+                            group.index,
+                            ReadType::Original,
+                            idx + 1,
+                            group_size,
+                            group.avg_qual,
+                        );
+                        r.write_fastq(&mut *writer)?;
+                        writer.write_all(b"\n")?;
                     }
-                    // if this is a duplex read, then use the buffer
-                    GroupType::Duplex(idx) => {
-                        &duplicate_output[*idx]
-                    }
-                };
+                }
 
-                writer.write_all(output)?;
+                let rec = group.consensus.as_mut().expect("Should never be None");
+                rec.write_fastq(&mut *writer)?;
+
+                // add a newline at the end, if we are not at the very end of the file
+                let last = (pos == (buf_locations.len() - 1)) && end_of_buffer;
+                if !last {
+                    writer.write_all(b"\n")?
+                }
             }
 
             // empty the buffer
-            duplicate_buffer.clear();
-            chunk_buffer.clear();
+            buf_single.clear();
+            buf_duplicates.clear();
+            buf_locations.clear();
         }
     }
 
@@ -117,37 +134,35 @@ pub fn consensus(
 /// # Returns
 ///
 /// A `String` containing the consensus sequence in FASTQ format.
-fn call_record(group: &UMIGroup, output_originals: bool) -> Vec<u8> {
+fn call_record(group: &mut UMIGroup) {
     let length = group.records.len();
-    let mut output = Cursor::new(Vec::new());
 
-    // process ignored reads first
-    if group.ignore {
-        for record in group.records.iter() {
-            io::write_read(&mut output, record, &group, ReadType::Ignored, false).unwrap();
-        }
-        return output.into_inner();
-    }
-
+    // // process ignored reads first
+    // if group.ignore {
+    //     for record in group.records.iter() {
+    //         io::write_read(&mut output, record, &group, ReadType::Ignored, false).unwrap();
+    //     }
+    //     return output.into_inner();
+    // }
 
     // for singletons, the read is its own consensus
     if length == 1 {
-        let record = &group.records[0];
-        io::write_read(&mut output, record, &group, ReadType::Consensus, false).unwrap();
-        return output.into_inner();
+        let mut rec = group.records[0].clone();
+
+        rec.add_metadata(group.index, ReadType::Single, 1, 1, group.avg_qual);
+
+        group.consensus = Some(rec);
+
+        return;
     }
 
     // initialise `spoa` machinery
-    let mut alignment_engine =
-        AlignmentEngine::new(AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
+    let mut alignment_engine = AlignmentEngine::new(AlignmentType::kOV, 5, -4, -8, -6, -10, -4);
     let mut poa_graph = spoa::Graph::new();
 
     // add each read in the duplicate group to the graph
     for record in group.records.iter() {
-        if output_originals {
-            // Write the original reads as well
-            io::write_read(&mut output, record, &group, ReadType::Original, false).unwrap();
-        }
+        // TODO: align originals and output as well
 
         // Align to the graph
         let align = alignment_engine.align_from_bytes(record.seq.as_ref(), &poa_graph);
@@ -155,25 +170,20 @@ fn call_record(group: &UMIGroup, output_originals: bool) -> Vec<u8> {
     }
 
     // Create a consensus read
-    let consensus_str = poa_graph.consensus();
-    let consensus_str = consensus_str
-        .to_str()
-        .expect("spoa module did not produce valid utf-8");
-
-    let id_string = format!(
-        "umi_group_id={} avg_input_quality={:.2}",
-        group.index,
-        group.avg_qual
-    );
-
-    let consensus = Record {
-        id: id_string,
-        seq: consensus_str.to_string(),
-        qual: "".to_string(),
+    let consensus = poa_graph.consensus_with_quality();
+    let mut rec = Record {
+        id: group.records[0].id.clone(),
+        seq: consensus.sequence,
+        qual: consensus.quality,
     };
 
-    io::write_read(&mut output, &consensus, &group, ReadType::Consensus, false).unwrap();
+    rec.add_metadata(
+        group.index,
+        ReadType::Consensus,
+        0,
+        group.records.len(),
+        group.avg_qual,
+    );
 
-    output.into_inner()
+    group.consensus = Some(rec);
 }
-
