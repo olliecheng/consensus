@@ -11,7 +11,12 @@ fn index() {
     let mut command = Command::cargo_bin("nailpolish").unwrap();
 
     let _ = command
-        .args(&["index", SAMPLE_FASTQ, "--index", temp.path().to_str().unwrap()])
+        .args(&[
+            "index",
+            SAMPLE_FASTQ,
+            "--index",
+            temp.path().to_str().unwrap(),
+        ])
         .assert()
         .success();
 
@@ -22,10 +27,7 @@ fn index() {
         temp.path().to_str().unwrap()
     );
 
-    let _ = Command::new("bash")
-        .arg("-c")
-        .arg(&cmp_cmd)
-        .unwrap();
+    let _ = Command::new("bash").arg("-c").arg(&cmp_cmd).unwrap();
 
     temp.close().unwrap();
 }
@@ -37,7 +39,13 @@ fn summary() {
     let mut command = Command::cargo_bin("nailpolish").unwrap();
 
     let _ = command
-        .args(&["summary", "--index", "tests/correct/index.tsv", "--output", temp.path().to_str().unwrap()])
+        .args(&[
+            "summary",
+            "--index",
+            "tests/correct/index.tsv",
+            "--output",
+            temp.path().to_str().unwrap(),
+        ])
         .assert()
         .success();
 
@@ -46,64 +54,58 @@ fn summary() {
 
 #[test]
 fn consensus_1t() {
-    let temp = assert_fs::NamedTempFile::new("consensus.fasta").unwrap();
+    let temp = assert_fs::NamedTempFile::new("consensus.fastq").unwrap();
 
     let mut command = Command::cargo_bin("nailpolish").unwrap();
 
     let _ = command
         .args(&[
             "call",
-            "--index", "tests/correct/index.tsv",
-            "--input", SAMPLE_FASTQ,
-            "--output", temp.path().to_str().unwrap(),
-            "--threads", "1"
+            "--index",
+            "tests/correct/index.tsv",
+            "--input",
+            SAMPLE_FASTQ,
+            "--output",
+            temp.path().to_str().unwrap(),
+            "--threads",
+            "1",
         ])
         .assert()
         .success();
 
-    const CORRECT_FILE: &str = "tests/correct/consensus.fasta";
-    let cmp_cmd = format!(
-        "diff {} {}",
-        temp.path().to_str().unwrap(),
-        CORRECT_FILE
-    );
+    const CORRECT_FILE: &str = "tests/correct/consensus.fastq";
+    let cmp_cmd = format!("diff {} {}", temp.path().to_str().unwrap(), CORRECT_FILE);
 
-    let _ = Command::new("bash")
-        .arg("-c")
-        .arg(&cmp_cmd)
-        .unwrap();
+    let _ = Command::new("bash").arg("-c").arg(&cmp_cmd).unwrap();
 
     temp.close().unwrap();
 }
 
 #[test]
 fn consensus_4t() {
-    let temp = assert_fs::NamedTempFile::new("consensus_4t.fasta").unwrap();
+    let temp = assert_fs::NamedTempFile::new("consensus_4t.fastq").unwrap();
 
     let mut command = Command::cargo_bin("nailpolish").unwrap();
 
     let _ = command
         .args(&[
             "call",
-            "--index", "tests/correct/index.tsv",
-            "--input", SAMPLE_FASTQ,
-            "--output", temp.path().to_str().unwrap(),
-            "--threads", "4"
+            "--index",
+            "tests/correct/index.tsv",
+            "--input",
+            SAMPLE_FASTQ,
+            "--output",
+            temp.path().to_str().unwrap(),
+            "--threads",
+            "4",
         ])
         .assert()
         .success();
 
-    const CORRECT_FILE: &str = "tests/correct/consensus.fasta";
-    let cmp_cmd = format!(
-        "diff {} {}",
-        temp.path().to_str().unwrap(),
-        CORRECT_FILE
-    );
+    const CORRECT_FILE: &str = "tests/correct/consensus.fastq";
+    let cmp_cmd = format!("diff {} {}", temp.path().to_str().unwrap(), CORRECT_FILE);
 
-    let _ = Command::new("bash")
-        .arg("-c")
-        .arg(&cmp_cmd)
-        .unwrap();
+    let _ = Command::new("bash").arg("-c").arg(&cmp_cmd).unwrap();
 
     temp.close().unwrap();
 }
