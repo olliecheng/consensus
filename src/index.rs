@@ -49,7 +49,9 @@ fn write_read<W: Write>(
     position: usize,
 ) -> Result<f64> {
     let len = rec.num_bases();
-    let qual: u32 = rec.qual().expect(".fastq should not fail here")
+    let qual: u32 = rec
+        .qual()
+        .expect(".fastq should not fail here")
         .iter()
         .map(|x| *x as u32)
         .sum();
@@ -63,21 +65,16 @@ fn write_read<W: Write>(
     // round to 2dp
     let phred_qual = (phred_qual * 100.0).round() / 100.0;
 
-    // eprintln!("Buffer:\n{}---", std::str::from_utf8(rec.all()).unwrap());
-
-    wtr.serialize(
-        IndexRecord {
-            id: identifier,
-            pos: position,
-            avg_qual: phred_qual,
-            n_bases: len,
-            rec_len: rec.all().len() + 1,
-        }
-    )?;
+    wtr.serialize(IndexRecord {
+        id: identifier,
+        pos: position,
+        avg_qual: phred_qual,
+        n_bases: len,
+        rec_len: rec.all().len() + 1,
+    })?;
 
     Ok(phred_qual)
 }
-
 
 /// Iterates over lines in a FASTQ file, extracting barcodes using a regex
 /// and writing the results to a CSV writer.
@@ -126,20 +123,16 @@ fn iter_lines_with_regex<W: Write>(
         match extract_bc_from_header(id, re, position) {
             Ok((len, identifier)) => {
                 match expected_len {
-                    None => {
-                        expected_len = Some(len)
-                    }
+                    None => expected_len = Some(len),
                     Some(expected) => {
                         if expected != len {
-                            bail!(
-                                IndexGenerationErr::DifferentMatchCounts {
-                                    header: id.to_string(),
-                                    re: re.clone(),
-                                    pos: position,
-                                    count: len,
-                                    expected
-                                }
-                            )
+                            bail!(IndexGenerationErr::DifferentMatchCounts {
+                                header: id.to_string(),
+                                re: re.clone(),
+                                pos: position,
+                                count: len,
+                                expected
+                            })
                         }
                     }
                 }
@@ -212,14 +205,15 @@ fn iter_lines_with_cluster_file<W: Write>(
             3 => format!("{}_{}", &record[1], &record[2]),
 
             // doesn't make sense
-            _ => bail!(InvalidClusterRow {row: record.as_slice().to_string()})
+            _ => bail!(InvalidClusterRow {
+                row: record.as_slice().to_string()
+            }),
         };
 
         cluster_map.insert(read_id, identifier);
     }
 
     info!("Finished reading clusters. ");
-
 
     let mut fastq_reader = needletail::parser::FastqReader::new(reader);
 
@@ -241,7 +235,9 @@ fn iter_lines_with_cluster_file<W: Write>(
 
         let Some(identifier) = cluster_map.get(id) else {
             if !skip_invalid_ids {
-                bail!(RowNotInClusters {header: id.to_string()})
+                bail!(RowNotInClusters {
+                    header: id.to_string()
+                })
             }
             info.unmatched_read_count += 1;
             continue;
@@ -291,7 +287,8 @@ fn extract_bc_from_header(
         });
     };
 
-    let captures = captures.iter()
+    let captures = captures
+        .iter()
         .skip(1)
         .flatten()
         .map(|m| m.as_str())
@@ -302,7 +299,7 @@ fn extract_bc_from_header(
         RecordIdentifier {
             head: captures[0].to_string(),
             tail: captures[1..].join("_"),
-        }
+        },
     ))
 }
 
@@ -373,9 +370,7 @@ pub fn construct_index(
     let re = Regex::new(barcode_regex)?;
     let mut result = match clusters {
         // no cluster file has been used
-        None => {
-            iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, file_info)
-        }
+        None => iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, file_info),
 
         // cluster file is being used
         Some(filepath) => {
@@ -384,10 +379,15 @@ pub fn construct_index(
                 .has_headers(false)
                 .from_path(filepath)?;
 
-            iter_lines_with_cluster_file(reader, &mut wtr, &mut cluster_rdr, skip_unmatched, file_info)
+            iter_lines_with_cluster_file(
+                reader,
+                &mut wtr,
+                &mut cluster_rdr,
+                skip_unmatched,
+                file_info,
+            )
         }
     }?;
-
 
     // amount of time passed
     result.elapsed = now.elapsed().as_secs_f64();
@@ -396,12 +396,13 @@ pub fn construct_index(
     if skip_unmatched {
         info!(
             "Stats: {} matched reads, {} unmatched reads, {:.1}s runtime",
-            result.matched_read_count,
-            result.unmatched_read_count,
-            result.elapsed,
+            result.matched_read_count, result.unmatched_read_count, result.elapsed,
         )
     } else {
-        info!("Stats: {} reads, {:.1}s runtime", result.matched_read_count, result.elapsed)
+        info!(
+            "Stats: {} reads, {:.1}s runtime",
+            result.matched_read_count, result.elapsed
+        )
     }
 
     info!("Writing to {outfile}...");
@@ -415,30 +416,35 @@ pub fn construct_index(
     temp_file.seek(std::io::SeekFrom::Start(0))?;
 
     // copy from the temporary file into the final output file
-    std::io::copy(
-        &mut temp_file,
-        &mut wtr_out,
-    )?;
+    std::io::copy(&mut temp_file, &mut wtr_out)?;
 
     Ok(())
 }
 
 #[derive(Error, Debug)]
 enum IndexGenerationErr {
-    #[error("no matches produced:
+    #[error(
+        "no matches produced:
 position {pos}
     `{header}`
 with capture group
     {re:?}
-suggestion: if some of the reads should not produce a barcode, pass the --skip-unmatched flag")]
-    NoMatch { header: String, re: Regex, pos: usize },
+suggestion: if some of the reads should not produce a barcode, pass the --skip-unmatched flag"
+    )]
+    NoMatch {
+        header: String,
+        re: Regex,
+        pos: usize,
+    },
 
-    #[error("inconsistent identifier count:
+    #[error(
+        "inconsistent identifier count:
 position {pos}
     `{header}`
 has {count} matches, whereas {expected} matches were expected
 using capture group
-    {re:?}")]
+    {re:?}"
+    )]
     DifferentMatchCounts {
         header: String,
         re: Regex,
@@ -447,17 +453,15 @@ using capture group
         expected: usize,
     },
 
-    #[error("invalid cluster row: should be of the format
+    #[error(
+        "invalid cluster row: should be of the format
   `READ_ID;BC;UMI`
 or
   `READ_ID;BC`, but instead got
-{row}")]
-    InvalidClusterRow {
-        row: String
-    },
+{row}"
+    )]
+    InvalidClusterRow { row: String },
 
     #[error("Row {header} of input file not present in cluster file")]
-    RowNotInClusters {
-        header: String
-    },
+    RowNotInClusters { header: String },
 }

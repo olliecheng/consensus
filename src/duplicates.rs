@@ -62,7 +62,7 @@ impl RecordIdentifier {
     pub fn from_string(s: &str) -> Self {
         let split_loc = match s.find('_') {
             Some(v) => v,
-            None => s.len() - 1
+            None => s.len() - 1,
         };
 
         RecordIdentifier {
@@ -113,7 +113,8 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics,
     let mut header = String::new();
 
     // read the first line, which is NOT in CSV format
-    file.read_line(&mut header).context("Could not read the first line")?;
+    file.read_line(&mut header)
+        .context("Could not read the first line")?;
 
     assert!(header.starts_with('#'));
     let info: FastqFile = serde_json::from_str(&header[1..])?;
@@ -146,21 +147,23 @@ pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics,
 
     // Compute information about the duplicates
     stats.duplicate_ids = 0;
-    stats.duplicate_reads = map.values().map(|v| {
-        let length = v.len();
-        if length > 1 {
-            stats.duplicate_ids += 1;
+    stats.duplicate_reads = map
+        .values()
+        .map(|v| {
+            let length = v.len();
+            if length > 1 {
+                stats.duplicate_ids += 1;
 
-            if let Some(x) = stats.distribution.get_mut(&length) {
-                *x += 1
+                if let Some(x) = stats.distribution.get_mut(&length) {
+                    *x += 1
+                } else {
+                    stats.distribution.insert(length, 1);
+                }
+                length
             } else {
-                stats.distribution.insert(length, 1);
+                0
             }
-            length
-        } else {
-            0
-        }
-    })
+        })
         .sum();
 
     stats

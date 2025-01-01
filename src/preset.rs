@@ -22,8 +22,8 @@ pub enum PresetBarcodeFormats {
 /// A `String` containing the regular expression for the specified barcode format.
 pub fn get_barcode_regex(preset: &PresetBarcodeFormats) -> String {
     match preset {
-        PresetBarcodeFormats::BcUmi => { String::from(r"^([ATCG]{16})_([ATCG]{12})") }
-        PresetBarcodeFormats::UmiTools => { String::from(r"_([ATCG]+)$") }
-        PresetBarcodeFormats::Illumina => { String::from(r":([ATCG]+)$") }
+        PresetBarcodeFormats::BcUmi => String::from(r"^([ATCG]{16})_([ATCG]{12})"),
+        PresetBarcodeFormats::UmiTools => String::from(r"_([ATCG]+)$"),
+        PresetBarcodeFormats::Illumina => String::from(r":([ATCG]+)$"),
     }
 }

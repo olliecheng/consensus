@@ -14,15 +14,14 @@ use anyhow::Result;
 use clap::Parser;
 
 mod call;
-mod duplicates;
-mod index;
 mod cli;
-mod preset;
+mod duplicates;
 mod file;
-mod summary;
-mod io;
 mod group;
-
+mod index;
+mod io;
+mod preset;
+mod summary;
 
 use cli::{Cli, Commands};
 
@@ -70,7 +69,7 @@ fn try_main() -> Result<()> {
             preset,
             barcode_regex,
             clusters,
-            skip_unmatched
+            skip_unmatched,
         } => {
             let barcode_regex = match barcode_regex {
                 Some(v) => {
@@ -116,7 +115,7 @@ fn try_main() -> Result<()> {
         Commands::Group {
             index,
             input,
-            output
+            output,
         } => {
             let (duplicates, _, _) =
                 duplicates::get_duplicates(index).expect("Could not parse index.");
