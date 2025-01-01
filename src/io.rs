@@ -4,8 +4,11 @@ use needletail::parser::SequenceRecord;
 use needletail::{parser::FastqReader, FastxReader};
 use std::fmt::Write as FmtWrite;
 // needed for write! to be implemented on Strings
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+use std::iter::Map;
+use std::slice::Iter;
 
 #[derive(PartialEq, Eq)]
 pub enum ReadType {
@@ -25,6 +28,7 @@ pub struct Record {
 impl TryFrom<SequenceRecord<'_>> for Record {
     type Error = std::string::FromUtf8Error;
 
+    /// Attempt to create a Record from a SequenceRecord.
     fn try_from(rec: SequenceRecord) -> Result<Self, Self::Error> {
         Ok(Record {
             id: String::from_utf8(rec.id().to_vec())?,
@@ -35,10 +39,40 @@ impl TryFrom<SequenceRecord<'_>> for Record {
 }
 
 impl Record {
+    /// Returns the PHRED quality scores of the record as a byte slice.
+    pub fn phred_quality(&self) -> Map<Iter<u8>, fn(&u8) -> u32> {
+        // we transform the quality to a PHRED score (ASCII ! to I)
+        // https://en.wikipedia.org/wiki/Phred_quality_score
+        self.qual
+            .as_bytes()
+            .into_iter()
+            .map(|&x| (x as u32) - 33u32)
+    }
+
+    /// Returns the average PHRED quality score of the record
+    pub fn phred_quality_avg(&self) -> f64 {
+        let qual = (self.phred_quality_total() as f64) / (self.len() as f64);
+        // round to 2dp
+        const ROUND_PRECISION: f64 = 100.0;
+        (qual * ROUND_PRECISION).round() / ROUND_PRECISION
+    }
+
+    /// Returns the sum of the PHRED quality scores of the record
+    pub fn phred_quality_total(&self) -> u32 {
+        self.phred_quality().sum()
+    }
+
+    /// Returns the sequence length in base count of the record
+    pub fn len(&self) -> usize {
+        self.seq.len()
+    }
+
+    /// Write the Record in a .fastq format
     pub fn write_fastq(&self, writer: &mut impl Write) -> Result<(), std::io::Error> {
         write!(writer, "@{}\n{}\n+\n{}", self.id, self.seq, self.qual)
     }
 
+    /// Write the Record in a .fasta format
     pub fn write_fasta(&self, writer: &mut impl Write) -> Result<(), std::io::Error> {
         write!(writer, ">{}\n{}", self.id, self.seq)
     }
@@ -52,6 +86,9 @@ impl Record {
     /// * `group_idx` - The index of the read in the group.
     /// * `group_size` - The size of the group.
     /// * `avg_qual` - The average quality score of the group.
+    ///
+    /// # Note
+    /// This function will modify the Record irreversibly by changing the Record's `id` field
     pub fn add_metadata(
         &mut self,
         umi_group: usize,
@@ -77,6 +114,40 @@ impl Record {
         if !matches!(read_type, ReadType::Original | ReadType::Ignored) {
             write!(self.id, " QL:f:{avg_qual:.2}").expect("String writing should not error");
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct IndexRecord {
+    id: String,
+    pos: usize,
+    avg_qual: f64,
+    n_bases: usize,
+    rec_len: usize,
+}
+
+impl Record {
+    /// Writes information about the Record to an external index writer, provided with
+    /// extra information.
+    ///
+    /// # Arguments
+    ///
+    /// * `wtr` - A mutable reference to a CSV writer.
+    /// * `pos` - The position of the record in the file.
+    /// * `file_len` - The bytes consumed by the record in the file (the _length_ on _file_)
+    pub fn write_index<W: Write>(
+        &self,
+        wtr: &mut csv::Writer<W>,
+        pos: usize,
+        file_len: usize,
+    ) -> csv::Result<()> {
+        wtr.serialize(IndexRecord {
+            id: self.id.clone(),
+            pos,
+            avg_qual: self.phred_quality_avg(),
+            n_bases: self.len(),
+            rec_len: file_len,
+        })
     }
 }
 
@@ -114,7 +185,7 @@ pub struct UMIGroup {
 /// let record = get_read_at_position(&mut file, 12345)?;
 /// println!("Record ID: {}", record.id);
 /// ```
-pub fn get_read_at_position<R: Read + Seek + Send>(
+pub fn get_record_from_position<R: Read + Seek + Send>(
     // file: &mut File,
     reader: &mut R,
     // file_sequential: &mut dyn Read,
@@ -245,9 +316,9 @@ where
         }
 
         let read = if single {
-            get_read_at_position(reader_seq, pos)
+            get_record_from_position(reader_seq, pos)
         } else {
-            get_read_at_position(reader_rnd, pos)
+            get_record_from_position(reader_rnd, pos)
         };
 
         match read {

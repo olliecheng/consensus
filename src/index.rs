@@ -14,6 +14,7 @@ use thiserror::Error;
 
 use crate::duplicates::RecordIdentifier;
 use crate::file::FastqFile;
+use crate::io::Record;
 use tempfile::tempfile_in;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -106,7 +107,7 @@ fn iter_lines_with_regex<W: Write>(
     let mut expected_len: Option<usize> = None;
 
     let mut fastq_reader = needletail::parser::FastqReader::new(reader);
-    let mut total_quality = 0f64;
+    let mut total_quality = 0u32;
     let mut total_len = 0;
 
     while let Some(rec) = fastq_reader.next() {
@@ -116,29 +117,30 @@ fn iter_lines_with_regex<W: Write>(
             info!("Processed: {}", info.read_count)
         }
 
-        let rec = rec.expect("Invalid record");
-        let id = std::str::from_utf8(rec.id()).context("Could not convert id to string")?;
-        let position = rec.position().byte() as usize;
+        let sequence_rec = rec.expect("Invalid record");
+        let position = sequence_rec.position().byte() as usize;
+        let file_len = sequence_rec.all().len() + 1;
+        let mut rec = Record::try_from(sequence_rec)?;
 
-        match extract_bc_from_header(id, re, position) {
+        match extract_bc_from_header(&rec.id, re, position) {
             Ok((len, identifier)) => {
-                match expected_len {
-                    None => expected_len = Some(len),
-                    Some(expected) => {
-                        if expected != len {
-                            bail!(IndexGenerationErr::DifferentMatchCounts {
-                                header: id.to_string(),
-                                re: re.clone(),
-                                pos: position,
-                                count: len,
-                                expected
-                            })
-                        }
-                    }
+                let expected_len = *expected_len.get_or_insert(len);
+
+                if expected_len != len {
+                    bail!(IndexGenerationErr::DifferentMatchCounts {
+                        header: rec.id,
+                        re: re.clone(),
+                        pos: position,
+                        count: len,
+                        expected: expected_len
+                    })
                 }
 
-                total_quality += write_read(wtr, &rec, identifier.to_string(), position)?;
-                total_len += rec.num_bases();
+                rec.id = identifier.to_string();
+
+                rec.write_index(wtr, position, file_len)?;
+                total_quality += rec.phred_quality_total();
+                total_len += rec.len();
                 info.matched_read_count += 1;
             }
             Err(e) => {
@@ -152,7 +154,7 @@ fn iter_lines_with_regex<W: Write>(
 
     wtr.flush()?;
 
-    info.avg_qual = total_quality / (info.matched_read_count as f64);
+    info.avg_qual = (total_quality as f64) / (info.matched_read_count as f64);
     info.avg_len = (total_len as f64) / (info.matched_read_count as f64);
     info.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
 
@@ -218,7 +220,7 @@ fn iter_lines_with_cluster_file<W: Write>(
     let mut fastq_reader = needletail::parser::FastqReader::new(reader);
 
     // we store the total quality and length so that we can take an average at the end
-    let mut total_quality = 0f64;
+    let mut total_quality = 0u32;
     let mut total_len = 0;
 
     while let Some(rec) = fastq_reader.next() {
@@ -229,29 +231,31 @@ fn iter_lines_with_cluster_file<W: Write>(
             info!("Processed: {}", info.read_count);
         }
 
-        let rec = rec.expect("Invalid record");
-        let id = std::str::from_utf8(rec.id()).context("Could not convert id to string")?;
-        let position = rec.position().byte() as usize;
+        let sequence_rec = rec.expect("Invalid record");
+        let position = sequence_rec.position().byte() as usize;
+        let file_len = sequence_rec.all().len() + 1;
+        let mut rec = Record::try_from(sequence_rec)?;
 
-        let Some(identifier) = cluster_map.get(id) else {
+        let Some(identifier) = cluster_map.get(&rec.id) else {
             if !skip_invalid_ids {
-                bail!(RowNotInClusters {
-                    header: id.to_string()
-                })
+                bail!(RowNotInClusters { header: rec.id })
             }
             info.unmatched_read_count += 1;
             continue;
         };
         info.matched_read_count += 1;
 
-        total_quality += write_read(wtr, &rec, identifier.clone(), position)?;
-        total_len += rec.num_bases();
+        rec.id = identifier.clone();
+        rec.write_index(wtr, position, file_len)?;
+
+        total_quality += rec.phred_quality_total();
+        total_len += rec.len();
     }
 
     wtr.flush()?;
 
     // compute summary statistics
-    info.avg_qual = total_quality / (info.matched_read_count as f64);
+    info.avg_qual = (total_quality as f64) / (info.matched_read_count as f64);
     info.avg_len = (total_len as f64) / (info.matched_read_count as f64);
     info.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
 
