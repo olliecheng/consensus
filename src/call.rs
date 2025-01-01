@@ -77,8 +77,8 @@ pub fn consensus(
         if (buf_locations.len() == chunk_size) || end_of_buffer {
             // single records are not multithreaded to save on IPC costs;
             // use rayon to multithread duplicate buffer record calling
-            buf_single.iter_mut().for_each(call_record);
-            buf_duplicates.par_iter_mut().for_each(call_record);
+            buf_single.iter_mut().for_each(call_umi_group);
+            buf_duplicates.par_iter_mut().for_each(call_umi_group);
 
             for (pos, loc) in buf_locations.iter().enumerate() {
                 let group = match loc {
@@ -134,7 +134,7 @@ pub fn consensus(
 /// # Returns
 ///
 /// A `String` containing the consensus sequence in FASTQ format.
-fn call_record(group: &mut UMIGroup) {
+fn call_umi_group(group: &mut UMIGroup) {
     let length = group.records.len();
 
     // // process ignored reads first
@@ -172,7 +172,7 @@ fn call_record(group: &mut UMIGroup) {
     // Create a consensus read
     let consensus = poa_graph.consensus_with_quality();
     let mut rec = Record {
-        id: group.records[0].id.clone(),
+        id: group.id.to_string(),
         seq: consensus.sequence,
         qual: consensus.quality,
     };
