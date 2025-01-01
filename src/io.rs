@@ -73,6 +73,7 @@ impl Record {
         write!(self.id, " UT:Z:{read_type_label} UG:i:{umi_group}")
             .expect("String writing should not error");
 
+        // don't report the group average quality if the readtype is Original or Ignored
         if !matches!(read_type, ReadType::Original | ReadType::Ignored) {
             write!(self.id, " QL:f:{avg_qual:.2}").expect("String writing should not error");
         }
@@ -267,33 +268,4 @@ where
     rec.avg_qual = (total_qual as f64) / (total_bp as f64);
 
     Some(Ok(rec))
-}
-
-/// Utility function to extract the error from an iterator and stop iteration immediately. Useful
-/// for iterators which yield a Result<T>.
-///
-/// # Returns
-///
-/// This function returns an `Option<T>`. If the item is `Ok`, it returns `Some(T)`.
-/// If the item is `Err`, it updates `err` with the error and returns `None`.
-///
-/// # Example
-/// ```
-/// let mut err = Ok(());
-/// let items = vec![Ok(1), Ok(2), Err(anyhow!("error")), Ok(3)];
-/// let results: Vec<_> = items
-///   .into_iter()
-///   .scan(&mut err, until_err)
-///   .collect();
-/// assert_eq!(results, vec![1, 2]);
-/// assert!(err.is_err());
-/// ```
-pub fn until_err<T>(err: &mut &mut anyhow::Result<()>, item: anyhow::Result<T>) -> Option<T> {
-    match item {
-        Ok(item) => Some(item),
-        Err(e) => {
-            **err = Err(e);
-            None
-        }
-    }
 }
