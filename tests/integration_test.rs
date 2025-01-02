@@ -11,12 +11,7 @@ fn index() {
     let mut command = Command::cargo_bin("nailpolish").unwrap();
 
     let _ = command
-        .args(&[
-            "index",
-            SAMPLE_FASTQ,
-            "--index",
-            temp.path().to_str().unwrap(),
-        ])
+        .args(&["index", SAMPLE_FASTQ, "-o", temp.path().to_str().unwrap()])
         .assert()
         .success();
 
@@ -43,7 +38,7 @@ fn summary() {
             "summary",
             "--index",
             "tests/correct/index.tsv",
-            "--output",
+            "-o",
             temp.path().to_str().unwrap(),
         ])
         .assert()
@@ -65,7 +60,7 @@ fn consensus_1t() {
             "tests/correct/index.tsv",
             "--input",
             SAMPLE_FASTQ,
-            "--output",
+            "-o",
             temp.path().to_str().unwrap(),
             "--threads",
             "1",
@@ -94,7 +89,7 @@ fn consensus_4t() {
             "tests/correct/index.tsv",
             "--input",
             SAMPLE_FASTQ,
-            "--output",
+            "-o",
             temp.path().to_str().unwrap(),
             "--threads",
             "4",

@@ -1,4 +1,4 @@
-#{"nailpolish_version":"0.1.0","file_path":"/Users/olliecheng/Developer/WEHI/consensus-call/nailpolish/tests/data/scmixology2_sample.fastq","index_date":"2025-01-02T10:46:32.316021+08:00","elapsed":0.526168292,"gb":0.02817634679377079,"matched_read_count":14142,"unmatched_read_count":0,"read_count":14143,"avg_qual":21274.992292462168,"avg_len":1009.505232640362,"filtered_reads":1}
+#{"nailpolish_version":"0.1.0","file_path":"/Users/olliecheng/Developer/WEHI/consensus-call/nailpolish/tests/data/scmixology2_sample.fastq","index_date":"2025-01-02T10:50:28.741895+08:00","elapsed":0.023255041,"gb":0.02817634679377079,"matched_read_count":14142,"unmatched_read_count":0,"read_count":14143,"avg_qual":21274.992292462168,"avg_len":1009.505232640362,"filtered_reads":1}
 id	pos	avg_qual	n_bases	rec_len
 TCTGGCTCATTCTCCG_GCAGCGAAGCCC	0	19.47	593	1264
 GCACTAAGTTGAAGTA_ATCAATGTATTG	1264	9.52	1655	3388

@@ -42,8 +42,8 @@ pub enum Commands {
         preset: crate::preset::PresetBarcodeFormats,
 
         /// the output index file
-        #[arg(long, default_value = "index.tsv")]
-        index: String,
+        #[arg(short, default_value = "index.tsv")]
+        output: String,
 
         /// whether to use a file containing pre-clustered reads, with every line in one of two formats:
         ///   1. READ_ID;BARCODE
@@ -94,7 +94,7 @@ pub enum Commands {
         index: String,
 
         /// output file
-        #[arg(long, default_value = "summary.html")]
+        #[arg(short, default_value = "summary.html")]
         output: String,
     },
 
@@ -109,8 +109,8 @@ pub enum Commands {
         #[arg(long)]
         input: String,
 
-        /// the output .fasta; note that quality values are not preserved
-        #[arg(long)]
+        /// the output .fastq
+        #[arg(short)]
         output: Option<String>,
 
         /// the number of threads to use
@@ -137,7 +137,7 @@ pub enum Commands {
         #[arg(long)]
         input: String,
 
-        #[arg(long)]
+        #[arg(short)]
         output: Option<String>,
     },
 }

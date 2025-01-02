@@ -66,7 +66,7 @@ fn try_main() -> Result<()> {
         }
         Commands::Index {
             file,
-            index,
+            output,
             preset,
             barcode_regex,
             clusters,
@@ -93,13 +93,14 @@ fn try_main() -> Result<()> {
 
             index::construct_index(
                 file,
-                index,
+                output,
                 &barcode_regex,
                 *skip_unmatched,
                 clusters,
                 filter_opts,
             )?;
-            info!("Completed index generation to {index}");
+
+            info!("Completed index generation to {output}");
         }
         Commands::Call {
             index,
