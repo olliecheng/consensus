@@ -14,6 +14,7 @@ use thiserror::Error;
 
 use crate::duplicates::RecordIdentifier;
 use crate::file::FastqFile;
+use crate::filter::{filter, FilterOpts};
 use crate::io::Record;
 use tempfile::tempfile_in;
 
@@ -102,6 +103,7 @@ fn iter_lines_with_regex<W: Write>(
     re: &Regex,
     skip_invalid_ids: bool,
     mut info: FastqFile,
+    filter_opts: FilterOpts,
 ) -> Result<FastqFile> {
     // expected_len is used to ensure that every read has the same format
     let mut expected_len: Option<usize> = None;
@@ -122,34 +124,44 @@ fn iter_lines_with_regex<W: Write>(
         let file_len = sequence_rec.all().len() + 1;
         let mut rec = Record::try_from(sequence_rec)?;
 
-        match extract_bc_from_header(&rec.id, re, position) {
-            Ok((len, identifier)) => {
-                let expected_len = *expected_len.get_or_insert(len);
+        // apply any filters
+        let should_keep = filter(&rec, &filter_opts);
+        if !should_keep {
+            info.filtered_reads += 1;
+            continue;
+        }
 
-                if expected_len != len {
-                    bail!(IndexGenerationErr::DifferentMatchCounts {
-                        header: rec.id,
-                        re: re.clone(),
-                        pos: position,
-                        count: len,
-                        expected: expected_len
-                    })
-                }
+        let bc = extract_bc_from_header(&rec.id, re, position);
 
-                rec.id = identifier.to_string();
-
-                rec.write_index(wtr, position, file_len)?;
-                total_quality += rec.phred_quality_total();
-                total_len += rec.len();
-                info.matched_read_count += 1;
+        // if this did not succeed...
+        if let Err(e) = bc {
+            if !skip_invalid_ids {
+                bail!(e)
             }
-            Err(e) => {
-                if !skip_invalid_ids {
-                    bail!(e)
-                }
-                info.unmatched_read_count += 1;
-            }
-        };
+            info.unmatched_read_count += 1;
+            continue;
+        }
+
+        let (len, identifier) = bc?;
+
+        // check that the number of barcode groups is the same
+        let expected_len = *expected_len.get_or_insert(len);
+        if expected_len != len {
+            bail!(IndexGenerationErr::DifferentMatchCounts {
+                header: rec.id,
+                re: re.clone(),
+                pos: position,
+                count: len,
+                expected: expected_len
+            })
+        }
+
+        rec.id = identifier.to_string();
+
+        rec.write_index(wtr, position, file_len)?;
+        total_quality += rec.phred_quality_total();
+        total_len += rec.len();
+        info.matched_read_count += 1;
     }
 
     wtr.flush()?;
@@ -187,6 +199,7 @@ fn iter_lines_with_cluster_file<W: Write>(
     clusters: &mut Reader<File>,
     skip_invalid_ids: bool,
     mut info: FastqFile,
+    filter_opts: FilterOpts,
 ) -> Result<FastqFile> {
     // first, we will read the clusters file
     info!("Reading identifiers from clusters file...");
@@ -235,6 +248,13 @@ fn iter_lines_with_cluster_file<W: Write>(
         let position = sequence_rec.position().byte() as usize;
         let file_len = sequence_rec.all().len() + 1;
         let mut rec = Record::try_from(sequence_rec)?;
+
+        // apply any filters
+        let should_keep = filter(&rec, &filter_opts);
+        if !should_keep {
+            info.filtered_reads += 1;
+            continue;
+        }
 
         let Some(identifier) = cluster_map.get(&rec.id) else {
             if !skip_invalid_ids {
@@ -335,6 +355,7 @@ pub fn construct_index(
     barcode_regex: &str,
     skip_unmatched: bool,
     clusters: &Option<String>,
+    filter_opts: FilterOpts,
 ) -> Result<()> {
     // time everything!
     let now = std::time::Instant::now();
@@ -374,7 +395,14 @@ pub fn construct_index(
     let re = Regex::new(barcode_regex)?;
     let mut result = match clusters {
         // no cluster file has been used
-        None => iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, file_info),
+        None => iter_lines_with_regex(
+            reader,
+            &mut wtr,
+            &re,
+            skip_unmatched,
+            file_info,
+            filter_opts,
+        ),
 
         // cluster file is being used
         Some(filepath) => {
@@ -389,6 +417,7 @@ pub fn construct_index(
                 &mut cluster_rdr,
                 skip_unmatched,
                 file_info,
+                filter_opts,
             )
         }
     }?;
@@ -399,13 +428,16 @@ pub fn construct_index(
     // report results
     if skip_unmatched {
         info!(
-            "Stats: {} matched reads, {} unmatched reads, {:.1}s runtime",
-            result.matched_read_count, result.unmatched_read_count, result.elapsed,
+            "Stats: {} matched reads, {} unmatched reads, {} filtered reads, {:.1}s runtime",
+            result.matched_read_count,
+            result.unmatched_read_count,
+            result.filtered_reads,
+            result.elapsed,
         )
     } else {
         info!(
-            "Stats: {} reads, {:.1}s runtime",
-            result.matched_read_count, result.elapsed
+            "Stats: {} reads, {} filtered reads, {:.1}s runtime",
+            result.matched_read_count, result.filtered_reads, result.elapsed
         )
     }
 

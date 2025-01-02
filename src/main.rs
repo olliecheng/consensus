@@ -17,6 +17,7 @@ mod call;
 mod cli;
 mod duplicates;
 mod file;
+mod filter;
 mod group;
 mod index;
 mod io;
@@ -70,6 +71,8 @@ fn try_main() -> Result<()> {
             barcode_regex,
             clusters,
             skip_unmatched,
+            len,
+            qual,
         } => {
             let barcode_regex = match barcode_regex {
                 Some(v) => {
@@ -83,7 +86,19 @@ fn try_main() -> Result<()> {
                 }
             };
 
-            index::construct_index(file, index, &barcode_regex, *skip_unmatched, clusters)?;
+            let filter_opts = filter::FilterOpts {
+                len: len.clone(),
+                quality: qual.clone(),
+            };
+
+            index::construct_index(
+                file,
+                index,
+                &barcode_regex,
+                *skip_unmatched,
+                clusters,
+                filter_opts,
+            )?;
             info!("Completed index generation to {index}");
         }
         Commands::Call {

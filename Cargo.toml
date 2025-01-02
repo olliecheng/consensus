@@ -28,6 +28,7 @@ tempfile = "3.14.0"
 thiserror = "1.0.64"
 predicates = "3.1.2"
 itertools = "0.13.0"
+indoc = "2.0.5"
 
 [[bin]]
 name = "nailpolish"

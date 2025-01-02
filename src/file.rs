@@ -12,4 +12,5 @@ pub struct FastqFile {
     pub read_count: usize,
     pub avg_qual: f64,
     pub avg_len: f64,
+    pub filtered_reads: usize,
 }
