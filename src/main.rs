@@ -154,5 +154,7 @@ fn main() {
         err.chain()
             .skip(1)
             .for_each(|cause| error!("  because: {}", cause));
+
+        std::process::exit(1);
     }
 }
