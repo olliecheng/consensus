@@ -1,13 +1,16 @@
 use crate::duplicates::{DuplicateMap, RecordIdentifier, RecordPosition};
-use anyhow::Context;
+use anyhow::{Context, Result};
 use needletail::parser::SequenceRecord;
-use needletail::{parser::FastqReader, FastxReader};
+use needletail::{parse_fastx_reader, parser::FastqReader, FastxReader};
+use std::collections::HashSet;
 use std::fmt::Write as FmtWrite;
 // needed for write! to be implemented on Strings
+use crate::index::{IndexReader, IndexReaderRecords, IndexRecord};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::iter::Map;
+use std::rc::Rc;
 use std::slice::Iter;
 
 #[derive(PartialEq, Eq)]
@@ -117,40 +120,6 @@ impl Record {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct IndexRecord {
-    id: String,
-    pos: usize,
-    avg_qual: f64,
-    n_bases: usize,
-    rec_len: usize,
-}
-
-impl Record {
-    /// Writes information about the Record to an external index writer, provided with
-    /// extra information.
-    ///
-    /// # Arguments
-    ///
-    /// * `wtr` - A mutable reference to a CSV writer.
-    /// * `pos` - The position of the record in the file.
-    /// * `file_len` - The bytes consumed by the record in the file (the _length_ on _file_)
-    pub fn write_index<W: Write>(
-        &self,
-        wtr: &mut csv::Writer<W>,
-        pos: usize,
-        file_len: usize,
-    ) -> csv::Result<()> {
-        wtr.serialize(IndexRecord {
-            id: self.id.clone(),
-            pos,
-            avg_qual: self.phred_quality_avg(),
-            n_bases: self.len(),
-            rec_len: file_len,
-        })
-    }
-}
-
 pub struct UMIGroup {
     /// The "Identifier" of this group, typically a "BC_UMI" string
     pub id: RecordIdentifier,
@@ -207,8 +176,6 @@ pub fn get_record_from_position<R: Read + Seek + Send>(
         )
     })?;
 
-    // eprintln!("fastq: {}", std::str::from_utf8(&bytes)?);
-
     // create a needletail 'reader' with the file at this location
     let mut fq_reader = FastqReader::new(&bytes[..]);
 
@@ -217,126 +184,179 @@ pub fn get_record_from_position<R: Read + Seek + Send>(
     Record::try_from(rec).context("Could not perform utf8 conversions")
 }
 
-/// Iterates over records in a FASTQ file by UMI group.
-///
-/// # Returns
-/// This function returns an iterator of Results. When an Error is encountered,
-/// the caller should immediately stop. See the documentation for `until_err` to see an example.
-///
-/// # Errors
-///
-/// This function will return an error if:
-/// * The file cannot be opened.
-/// * The record cannot be read at the specified position.
-///
-/// The iterator yields Some(Err) if:
-/// * There are issues reading the read at at the specified position. See the documentation for
-///   `get_read_at_position` for more.
-pub fn iter_duplicates(
-    input: &str,
+pub struct UMIGroupCollection {
+    seq_parser: Box<dyn FastxReader>,
+    rnd_reader: File,
+    index: IndexReader,
     duplicates: DuplicateMap,
-    duplicates_only: bool,
-) -> anyhow::Result<impl Iterator<Item = anyhow::Result<UMIGroup>> + '_> {
-    // we create two readers, one for sequential access and one for random
-    let file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
-
-    // capacity of 128 KiB
-    let mut file_sequential = BufReader::with_capacity(128 * 1024, file);
-
-    // no need for a buffered reader here, as we are only doing random access
-    let mut file_random =
-        File::open(input).with_context(|| format!("Unable to open file {input}"))?;
-
-    Ok(duplicates
-        .into_iter()
-        .enumerate()
-        // first, read from the file (sequential)
-        .filter_map(move |(index, (id, positions))| {
-            process_read_from_position(
-                index,
-                id,
-                positions,
-                duplicates_only,
-                &mut file_sequential,
-                &mut file_random,
-            )
-        }))
+    records: IndexReaderRecords,
 }
 
-/// Reads duplicate groups from a list of read positions, returning a UMIGroup
-///
-/// # Arguments
-///
-/// * `index` - The index of the UMI group.
-/// * `id` - The identifier of the UMI group.
-/// * `positions` - A vector of positions where the reads are located.
-/// * `duplicates_only` - A boolean indicating whether to process only duplicate reads.
-/// * `reader_seq` - A mutable reference to a sequential reader.
-/// * `reader_rnd` - A mutable reference to a random access reader.
-///
-/// # Returns
-///
-/// This function returns an `Option` containing a `Result<UMIGroup>`.
-/// The return value is `None` if we wish to skip over this duplicate group; for instance,
-/// if it is requested that single reads are skipped.
-fn process_read_from_position<R1, R2>(
-    index: usize,
-    id: RecordIdentifier,
-    positions: Vec<RecordPosition>,
-    duplicates_only: bool,
-    reader_seq: &mut R1,
-    reader_rnd: &mut R2,
-) -> Option<anyhow::Result<UMIGroup>>
-where
-    R1: Read + Seek + Send,
-    R2: Read + Seek + Send,
-{
-    let single = positions.len() == 1;
-    // if this UMI group is a single AND we only want to output duplicates,
-    // this is skipped over
-    if single && duplicates_only {
-        return None;
+impl UMIGroupCollection {
+    pub fn new(mut index: IndexReader, input: &str) -> Result<Self> {
+        let file = File::open(input).with_context(|| format!("Unable to open file {input}"))?;
+
+        // create a sequential reader with a buffer size of BUF_CAPACITY
+        const BUF_CAPACITY: usize = 1024usize.pow(2);
+        let mut seq_reader = BufReader::with_capacity(BUF_CAPACITY, file);
+        let mut seq_parser =
+            parse_fastx_reader(seq_reader).context("Could not create fastx reader")?;
+
+        // create a random access reader. we don't want a buffer as we plan to read a fixed amount of
+        // bytes randomly
+        let mut rnd_reader =
+            File::open(input).with_context(|| format!("Unable to open file {input}"))?;
+
+        let (duplicates, _) = index.get_duplicates()?;
+        let records = index.index_records()?;
+
+        Ok(UMIGroupCollection {
+            seq_parser,
+            rnd_reader,
+            index,
+            duplicates,
+            records,
+        })
     }
 
-    let mut rec = UMIGroup {
-        id,
-        index,
-        records: Vec::new(),
-        avg_qual: 0.0,
-        ignore: false,
-        consensus: None,
-    };
-
-    let mut total_qual = 0u32;
-    let mut total_bp = 0usize;
-
-    for pos in positions.iter() {
-        if pos.length > 30000 {
-            rec.ignore = true;
-        }
-
-        let read = if single {
-            get_record_from_position(reader_seq, pos)
-        } else {
-            get_record_from_position(reader_rnd, pos)
+    /// Retrieves the next record from the sequence parser and the corresponding index record.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The sequence parser encounters an error while reading the next record.
+    /// * The index reader encounters an error while reading the next index item.
+    pub fn next_record(&mut self) -> Result<Option<(IndexRecord, SequenceRecord)>> {
+        let Some(rec) = self.seq_parser.next() else {
+            return Ok(None);
         };
+        let rec = rec?;
+        let idx = self
+            .records
+            .next()
+            .context("No corresponding index record")??;
 
-        match read {
-            Ok(record) => {
-                total_qual += record
-                    .qual
-                    .as_bytes()
-                    .iter()
-                    .map(|x: &u8| *x as u32 - 33)
-                    .sum::<u32>();
-                total_bp += record.qual.len();
-                rec.records.push(record)
-            }
-            Err(e) => return Some(Err(e)),
-        }
+        Ok(Some((idx, rec)))
     }
 
-    rec.avg_qual = (total_qual as f64) / (total_bp as f64);
+    pub fn get_rec_random(&mut self, pos: &RecordPosition) -> Result<Record> {
+        self.rnd_reader
+            .seek(SeekFrom::Start(pos.pos as u64))
+            .with_context(|| format!("Unable to seek file at position {}", pos.pos))?;
 
-    Some(Ok(rec))
+        // read the exact number of bytes
+        let mut bytes = vec![0; pos.length];
+        self.rnd_reader.read_exact(&mut bytes).with_context(|| {
+            format!(
+                "Could not read {} lines at position {}",
+                pos.length, pos.pos
+            )
+        })?;
+
+        // create a needletail 'reader' with the file at this location
+        let mut fq_reader = FastqReader::new(&bytes[..]);
+
+        let rec = fq_reader.next().context("Unexpected EOF")??;
+
+        Record::try_from(rec).context("Could not perform utf8 conversions")
+    }
+
+    /// Creates a _streaming_ iterator over UMI groups in the collection.
+    /// Since it is a streaming iterator, it does not support usual iterator methods
+    /// and should be called using a `while let Some(v)...` loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `duplicates_only` - A boolean indicating whether to process only duplicate reads.
+    ///
+    /// # Returns
+    ///
+    /// This function returns an iterator over `UMIGroupCollectionIter` which returns `UMIGroup`.
+    pub fn stream_iter(&mut self, duplicates_only: bool) -> UMIGroupCollectionIter {
+        UMIGroupCollectionIter {
+            collection: self,
+            visited_reads: HashSet::new(),
+            duplicates_only,
+            current_idx: 0,
+        }
+    }
+}
+
+pub struct UMIGroupCollectionIter<'a> {
+    collection: &'a mut UMIGroupCollection,
+    visited_reads: HashSet<usize>,
+    duplicates_only: bool,
+    current_idx: usize,
+}
+
+impl UMIGroupCollectionIter<'_> {
+    /// Iterates over records in a FASTQ file by UMI group.
+    ///
+    /// # Returns
+    /// This function returns an iterator of Results. When an Error is encountered,
+    /// the caller should immediately stop. See the documentation for `until_err` to see an example.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The file cannot be opened.
+    /// * The record cannot be read at the specified position.
+    ///
+    /// The iterator yields Some(Err) if:
+    /// * There are issues reading the read at at the specified position. See the documentation for
+    ///   `get_read_at_position` for more.
+    pub fn next(&mut self) -> Result<Option<UMIGroup>> {
+        let Some((idx, rec)) = self.collection.next_record()? else {
+            return Ok(None);
+        };
+        // note: we don't need to add this to visited_reads, since traversal is in order
+        let position = rec.position().byte() as usize;
+
+        // if this is marked to ignore or we have already visited this, we can skip
+        if self.visited_reads.contains(&position) || idx.ignored {
+            return self.next();
+        }
+
+        let rec = Record::try_from(rec).context("Could not perform utf8 conversions")?;
+        // get the corresponding entry in duplicates
+        let id = RecordIdentifier::from_string(&idx.id);
+        let group = self
+            .collection
+            .duplicates
+            .records_by_pos(&position)
+            .context("Could not find")?
+            .clone();
+
+        // skip over group sizes which are more than 1
+        let group_size = group.len();
+        if self.duplicates_only && group_size == 1 {
+            return self.next();
+        }
+
+        let mut records = Vec::with_capacity(group_size);
+        records.push(rec);
+
+        // get all the other records as well - skip the first one, that's `rec`
+        for pos in group.iter().skip(1) {
+            self.visited_reads.insert(pos.pos);
+
+            let rec = self.collection.get_rec_random(pos)?;
+            records.push(rec)
+        }
+
+        let avg_qual =
+            records.iter().map(|r| r.phred_quality_avg()).sum::<f64>() / (records.len() as f64);
+
+        let umigroup = UMIGroup {
+            id,
+            index: self.current_idx,
+            records,
+            avg_qual,
+            ignore: false,
+            consensus: None,
+        };
+        self.current_idx += 1;
+
+        Ok(Some(umigroup))
+    }
 }

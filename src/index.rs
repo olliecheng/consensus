@@ -1,9 +1,11 @@
+use csv::{DeserializeRecordsIntoIter, Reader, ReaderBuilder, Writer, WriterBuilder};
+use regex::Regex;
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-
-use csv::{Reader, Writer, WriterBuilder};
-use regex::Regex;
+use std::iter::Peekable;
+use std::rc::Rc;
 
 use crate::index::IndexGenerationErr::{InvalidClusterRow, RowNotInClusters};
 use anyhow::{bail, Context, Result};
@@ -13,69 +15,148 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::duplicates::RecordIdentifier;
-use crate::file::FastqFile;
+use crate::file::ReadFileMetadata;
 use crate::filter::{filter, FilterOpts};
 use crate::io::Record;
 use tempfile::tempfile_in;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexRecord {
     pub id: String,
     pub pos: usize,
     pub avg_qual: f64,
     pub n_bases: usize,
     pub rec_len: usize,
+    pub ignored: bool,
 }
 
-/// Writes a read record to the given CSV writer, and also returns the average PHRED quality
-/// score of the read.
-///
-/// # Arguments
-///
-/// * `wtr` - A mutable reference to a CSV writer.
-/// * `rec` - A reference to a `SequenceRecord` containing the read data.
-/// * `identifier` - A string slice representing the identifier of the read.
-/// * `position` - The position of the read.
-///
-/// # Returns
-///
-/// Returns a `Result` containing the average PHRED quality score of the read as an `f64`.
-///
-/// # Errors
-///
-/// This function will return an error if writing to the CSV writer fails.
-fn write_read<W: Write>(
-    wtr: &mut Writer<W>,
-    rec: &SequenceRecord,
-    identifier: String,
-    position: usize,
-) -> Result<f64> {
-    let len = rec.num_bases();
-    let qual: u32 = rec
-        .qual()
-        .expect(".fastq should not fail here")
-        .iter()
-        .map(|x| *x as u32)
-        .sum();
+pub struct IndexWriter {
+    wtr: Writer<File>,
+    temp_file: File,
+    out_file: String,
+    pub metadata: ReadFileMetadata,
+}
 
-    let avg_qual = (qual as f64) / (len as f64);
+impl IndexWriter {
+    /// Create an IndexWriter from a desired output path. A temporary file is first used
+    /// in order to store data, and will be created in the same directory as the output path.
+    pub fn new(path: &str) -> Result<Self> {
+        // get the directory of the output file
+        let mut tempfile_dir = std::path::absolute(path)?;
+        tempfile_dir.pop();
 
-    // we transform the quality to a PHRED score (ASCII ! to I)
-    // https://en.wikipedia.org/wiki/Phred_quality_score
-    let phred_qual = avg_qual - 33f64;
+        // create a temporary file at this directory
+        let temp_file = tempfile_in(tempfile_dir)?;
 
-    // round to 2dp
-    let phred_qual = (phred_qual * 100.0).round() / 100.0;
+        let mut wtr = WriterBuilder::new()
+            .delimiter(b'\t')
+            .from_writer(temp_file.try_clone()?);
 
-    wtr.serialize(IndexRecord {
-        id: identifier,
-        pos: position,
-        avg_qual: phred_qual,
-        n_bases: len,
-        rec_len: rec.all().len() + 1,
-    })?;
+        Ok(IndexWriter {
+            wtr,
+            temp_file,
+            out_file: path.to_string(),
+            metadata: ReadFileMetadata {
+                nailpolish_version: crate::cli::VERSION.to_string(),
+                index_date: format!("{:?}", chrono::offset::Local::now()),
+                ..ReadFileMetadata::default()
+            },
+        })
+    }
 
-    Ok(phred_qual)
+    /// Finalizes the writing process by flushing the writer, writing metadata,
+    /// and copying the temporary file contents to the final output file.
+    pub fn finish_write(&mut self) -> Result<()> {
+        info!("Writing to {}...", self.out_file);
+
+        self.wtr.flush()?;
+
+        // write to actual output file
+        let mut wtr_out = File::create(&self.out_file)?;
+        writeln!(wtr_out, "#{}", serde_json::to_string(&self.metadata)?)?;
+
+        // drop the mutable write, and seek to the start so we can read
+        // drop(self.wtr);
+        self.temp_file.seek(std::io::SeekFrom::Start(0))?;
+
+        // copy from the temporary file into the final output file
+        std::io::copy(&mut self.temp_file, &mut wtr_out)?;
+
+        Ok(())
+    }
+
+    /// Writes information about the Record to an external index writer, provided with
+    /// extra information.
+    ///
+    /// # Arguments
+    ///
+    /// * `wtr` - A mutable reference to a CSV writer.
+    /// * `pos` - The position of the record in the file.
+    /// * `file_len` - The bytes consumed by the record in the file (the _length_ on _file_)
+    pub fn write_record(
+        &mut self,
+        rec: &Record,
+        pos: usize,
+        file_len: usize,
+        ignored: bool,
+    ) -> csv::Result<()> {
+        self.wtr.serialize(IndexRecord {
+            id: rec.id.clone(),
+            pos,
+            avg_qual: rec.phred_quality_avg(),
+            n_bases: rec.len(),
+            rec_len: file_len,
+            ignored,
+        })
+    }
+}
+
+pub struct IndexReader {
+    path: String,
+    pub(crate) metadata: ReadFileMetadata,
+}
+
+pub type IndexReaderRecords = DeserializeRecordsIntoIter<BufReader<File>, IndexRecord>;
+
+impl IndexReader {
+    pub fn from_path(path: &str) -> Result<Self> {
+        let mut rdr = Self {
+            path: path.to_string(),
+            metadata: ReadFileMetadata::default(),
+        };
+
+        rdr.metadata = rdr.create_reader()?.0;
+
+        Ok(rdr)
+    }
+
+    fn create_reader(&self) -> Result<(ReadFileMetadata, Reader<BufReader<File>>)> {
+        let file = File::open(&self.path)?;
+        let mut file = BufReader::new(file);
+
+        let mut header = String::new();
+
+        // read the first line, which is NOT in CSV format
+        file.read_line(&mut header)
+            .context("Could not read the first line")?;
+
+        assert!(header.starts_with('#'));
+        let metadata = serde_json::from_str(&header[1..])?;
+
+        // Create CSV builder
+        let rdr = ReaderBuilder::new()
+            .delimiter(b'\t')
+            .has_headers(true)
+            .from_reader(file);
+
+        Ok((metadata, rdr))
+    }
+
+    /// Return the records of the index
+    pub fn index_records(&mut self) -> Result<IndexReaderRecords> {
+        let (_, mut rdr) = self.create_reader()?;
+        Ok(rdr.into_deserialize())
+    }
 }
 
 /// Iterates over lines in a FASTQ file, extracting barcodes using a regex
@@ -97,14 +178,13 @@ fn write_read<W: Write>(
 /// # Errors
 ///
 /// This function will return an error if reading from the FASTQ file or writing to the CSV writer fails.
-fn iter_lines_with_regex<W: Write>(
+fn iter_lines_with_regex(
     reader: BufReader<File>,
-    wtr: &mut Writer<W>,
+    wtr: &mut IndexWriter,
     re: &Regex,
     skip_invalid_ids: bool,
-    mut info: FastqFile,
     filter_opts: FilterOpts,
-) -> Result<FastqFile> {
+) -> Result<()> {
     // expected_len is used to ensure that every read has the same format
     let mut expected_len: Option<usize> = None;
 
@@ -113,10 +193,10 @@ fn iter_lines_with_regex<W: Write>(
     let mut total_len = 0;
 
     while let Some(rec) = fastq_reader.next() {
-        info.read_count += 1;
+        wtr.metadata.read_count += 1;
 
-        if info.read_count % 50000 == 0 {
-            info!("Processed: {}", info.read_count)
+        if wtr.metadata.read_count % 50000 == 0 {
+            info!("Processed: {}", wtr.metadata.read_count)
         }
 
         let sequence_rec = rec.expect("Invalid record");
@@ -125,11 +205,8 @@ fn iter_lines_with_regex<W: Write>(
         let mut rec = Record::try_from(sequence_rec)?;
 
         // apply any filters
-        let should_keep = filter(&rec, &filter_opts);
-        if !should_keep {
-            info.filtered_reads += 1;
-            continue;
-        }
+        let ignored = !filter(&rec, &filter_opts);
+        wtr.metadata.filtered_reads += ignored as usize;
 
         let bc = extract_bc_from_header(&rec.id, re, position);
 
@@ -138,7 +215,7 @@ fn iter_lines_with_regex<W: Write>(
             if !skip_invalid_ids {
                 bail!(e)
             }
-            info.unmatched_read_count += 1;
+            wtr.metadata.unmatched_read_count += 1;
             continue;
         }
 
@@ -158,19 +235,17 @@ fn iter_lines_with_regex<W: Write>(
 
         rec.id = identifier.to_string();
 
-        rec.write_index(wtr, position, file_len)?;
+        wtr.write_record(&rec, position, file_len, ignored)?;
         total_quality += rec.phred_quality_total();
         total_len += rec.len();
-        info.matched_read_count += 1;
+        wtr.metadata.matched_read_count += 1;
     }
 
-    wtr.flush()?;
+    wtr.metadata.avg_qual = (total_quality as f64) / (wtr.metadata.matched_read_count as f64);
+    wtr.metadata.avg_len = (total_len as f64) / (wtr.metadata.matched_read_count as f64);
+    wtr.metadata.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
 
-    info.avg_qual = (total_quality as f64) / (info.matched_read_count as f64);
-    info.avg_len = (total_len as f64) / (info.matched_read_count as f64);
-    info.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
-
-    Ok(info)
+    Ok(())
 }
 
 /// Iterates over lines in a FASTQ file, matching read identifiers with a cluster file instead of
@@ -193,14 +268,13 @@ fn iter_lines_with_regex<W: Write>(
 ///
 /// This function will return an error if reading from the FASTQ file, reading from the cluster file,
 /// or writing to the CSV writer fails.
-fn iter_lines_with_cluster_file<W: Write>(
+fn iter_lines_with_cluster_file(
     reader: BufReader<File>,
-    wtr: &mut Writer<W>,
+    wtr: &mut IndexWriter,
     clusters: &mut Reader<File>,
     skip_invalid_ids: bool,
-    mut info: FastqFile,
     filter_opts: FilterOpts,
-) -> Result<FastqFile> {
+) -> Result<()> {
     // first, we will read the clusters file
     info!("Reading identifiers from clusters file...");
 
@@ -237,11 +311,11 @@ fn iter_lines_with_cluster_file<W: Write>(
     let mut total_len = 0;
 
     while let Some(rec) = fastq_reader.next() {
-        info.read_count += 1;
+        wtr.metadata.read_count += 1;
 
         // print progress notification
-        if info.read_count % 50000 == 0 {
-            info!("Processed: {}", info.read_count);
+        if wtr.metadata.read_count % 50000 == 0 {
+            info!("Processed: {}", wtr.metadata.read_count);
         }
 
         let sequence_rec = rec.expect("Invalid record");
@@ -250,36 +324,31 @@ fn iter_lines_with_cluster_file<W: Write>(
         let mut rec = Record::try_from(sequence_rec)?;
 
         // apply any filters
-        let should_keep = filter(&rec, &filter_opts);
-        if !should_keep {
-            info.filtered_reads += 1;
-            continue;
-        }
+        let ignored = !filter(&rec, &filter_opts);
+        wtr.metadata.filtered_reads += ignored as usize;
 
         let Some(identifier) = cluster_map.get(&rec.id) else {
             if !skip_invalid_ids {
                 bail!(RowNotInClusters { header: rec.id })
             }
-            info.unmatched_read_count += 1;
+            wtr.metadata.unmatched_read_count += 1;
             continue;
         };
-        info.matched_read_count += 1;
+        wtr.metadata.matched_read_count += 1;
 
         rec.id = identifier.clone();
-        rec.write_index(wtr, position, file_len)?;
+        wtr.write_record(&rec, position, file_len, ignored)?;
 
         total_quality += rec.phred_quality_total();
         total_len += rec.len();
     }
 
-    wtr.flush()?;
-
     // compute summary statistics
-    info.avg_qual = (total_quality as f64) / (info.matched_read_count as f64);
-    info.avg_len = (total_len as f64) / (info.matched_read_count as f64);
-    info.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
+    wtr.metadata.avg_qual = (total_quality as f64) / (wtr.metadata.matched_read_count as f64);
+    wtr.metadata.avg_len = (total_len as f64) / (wtr.metadata.matched_read_count as f64);
+    wtr.metadata.gb = (fastq_reader.position().byte() as f64) / (1024u32.pow(3) as f64);
 
-    Ok(info)
+    Ok(())
 }
 
 /// Extracts barcodes from a read header using a regex pattern.
@@ -360,101 +429,55 @@ pub fn construct_index(
     // time everything!
     let now = std::time::Instant::now();
 
-    // open file
+    // create the .fastq reader
     let f = File::open(infile).expect("File could not be opened");
     let reader = BufReader::new(f);
 
-    // populate with some default information
-    let file_info = FastqFile {
-        nailpolish_version: crate::cli::VERSION.to_string(),
-        file_path: std::fs::canonicalize(infile)?.display().to_string(),
-        index_date: format!("{:?}", chrono::offset::Local::now()),
-        ..FastqFile::default()
-    };
+    // create the index file writer
+    let mut wtr = IndexWriter::new(outfile)?;
+    wtr.metadata.file_path = std::fs::canonicalize(infile)?.display().to_string();
 
-    // get the directory of the output file
-    let mut tempfile_dir = std::path::absolute(outfile)?;
-    tempfile_dir.pop();
-
-    // create a temporary file at this directory
-    let mut temp_file = tempfile_in(tempfile_dir)?;
-    let mut wtr = WriterBuilder::new()
-        .delimiter(b'\t')
-        .from_writer(&mut temp_file);
-
-    // write headers and file information
-    // wtr.write_record([
-    //     "id",
-    //     "pos",
-    //     "avg_qual",
-    //     "n_bases",
-    //     "rec_len"
-    // ])?;
-
-    // parse the file
     let re = Regex::new(barcode_regex)?;
-    let mut result = match clusters {
-        // no cluster file has been used
-        None => iter_lines_with_regex(
+
+    if let Some(filepath) = clusters {
+        // parse identifier from a separate clusters file
+        let mut cluster_rdr = csv::ReaderBuilder::new()
+            .delimiter(b';')
+            .has_headers(false)
+            .from_path(filepath)?;
+
+        iter_lines_with_cluster_file(
             reader,
             &mut wtr,
-            &re,
+            &mut cluster_rdr,
             skip_unmatched,
-            file_info,
             filter_opts,
-        ),
-
-        // cluster file is being used
-        Some(filepath) => {
-            let mut cluster_rdr = csv::ReaderBuilder::new()
-                .delimiter(b';')
-                .has_headers(false)
-                .from_path(filepath)?;
-
-            iter_lines_with_cluster_file(
-                reader,
-                &mut wtr,
-                &mut cluster_rdr,
-                skip_unmatched,
-                file_info,
-                filter_opts,
-            )
-        }
-    }?;
+        )?
+    } else {
+        // parse the identifier from the header
+        iter_lines_with_regex(reader, &mut wtr, &re, skip_unmatched, filter_opts)?
+    }
 
     // amount of time passed
-    result.elapsed = now.elapsed().as_secs_f64();
+    wtr.metadata.elapsed = now.elapsed().as_secs_f64();
 
     // report results
     if skip_unmatched {
         info!(
             "Stats: {} matched reads, {} unmatched reads, {} filtered reads, {:.1}s runtime",
-            result.matched_read_count,
-            result.unmatched_read_count,
-            result.filtered_reads,
-            result.elapsed,
+            wtr.metadata.matched_read_count,
+            wtr.metadata.unmatched_read_count,
+            wtr.metadata.filtered_reads,
+            wtr.metadata.elapsed,
         )
     } else {
         info!(
             "Stats: {} reads, {} filtered reads, {:.1}s runtime",
-            result.matched_read_count, result.filtered_reads, result.elapsed
+            wtr.metadata.matched_read_count, wtr.metadata.filtered_reads, wtr.metadata.elapsed
         )
     }
 
-    info!("Writing to {outfile}...");
-
-    // write to actual output file
-    let mut wtr_out = File::create(outfile)?;
-    writeln!(wtr_out, "#{}", serde_json::to_string(&result)?)?;
-
-    // drop the mutable write, and seek to the start so we can read
-    drop(wtr);
-    temp_file.seek(std::io::SeekFrom::Start(0))?;
-
-    // copy from the temporary file into the final output file
-    std::io::copy(&mut temp_file, &mut wtr_out)?;
-
-    Ok(())
+    wtr.finish_write()
 }
 
 #[derive(Error, Debug)]

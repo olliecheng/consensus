@@ -24,6 +24,7 @@ mod io;
 mod preset;
 mod summary;
 
+use crate::io::UMIGroupCollection;
 use cli::{Cli, Commands};
 
 /// Creates a `BufWriter` for the given output option. This allows for an output file to be passed
@@ -110,17 +111,13 @@ fn try_main() -> Result<()> {
             duplicates_only,
             report_original_reads,
         } => {
-            info!("Collecting duplicates... {}", duplicates_only);
-            let (duplicates, _statistics, _) =
-                duplicates::get_duplicates(index).expect("Could not parse index.");
-            info!("Iterating through individual duplicates");
-
+            let index = index::IndexReader::from_path(index)?;
+            let mut collection = UMIGroupCollection::new(index, input)?;
             let mut writer = get_writer(output)?;
 
             call::consensus(
-                input,
+                &mut collection,
                 &mut writer,
-                duplicates,
                 *threads,
                 *duplicates_only,
                 *report_original_reads,
@@ -133,12 +130,12 @@ fn try_main() -> Result<()> {
             input,
             output,
         } => {
-            let (duplicates, _, _) =
-                duplicates::get_duplicates(index).expect("Could not parse index.");
+            let index = index::IndexReader::from_path(index)?;
+            let mut collection = UMIGroupCollection::new(index, input)?;
 
             let mut writer = get_writer(output)?;
 
-            group::group(input, &mut writer, duplicates)?;
+            group::group(&mut collection, &mut writer)?;
 
             info!("Completed successfully.")
         }

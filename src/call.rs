@@ -1,5 +1,5 @@
 use crate::duplicates::DuplicateMap;
-use crate::io::{iter_duplicates, ReadType, Record, UMIGroup};
+use crate::io::{ReadType, Record, UMIGroup, UMIGroupCollection};
 
 use spoa::{AlignmentEngine, AlignmentType};
 
@@ -7,6 +7,7 @@ use rayon::prelude::*;
 
 use std::io::prelude::*;
 
+use crate::index::IndexReader;
 use anyhow::Result;
 
 enum GroupType {
@@ -31,9 +32,8 @@ enum GroupType {
 /// * `Result<()>` - Returns `Ok(())` if successful, or an error if an error occurs
 ///   during processing.
 pub fn consensus(
-    input: &str,
+    collection: &mut UMIGroupCollection,
     writer: &mut impl Write,
-    duplicates: DuplicateMap,
     threads: usize,
     duplicates_only: bool,
     output_originals: bool,
@@ -42,7 +42,7 @@ pub fn consensus(
         .num_threads(threads)
         .build_global()?;
 
-    let mut duplicate_iterator = iter_duplicates(input, duplicates, duplicates_only)?.peekable();
+    let mut duplicate_iterator = collection.stream_iter(duplicates_only);
 
     let chunk_size = 100usize * threads;
 
@@ -52,26 +52,30 @@ pub fn consensus(
     let mut buf_single = Vec::new();
 
     let mut idx = 0;
-    while let Some(elem) = duplicate_iterator.next() {
-        idx += 1;
+    let mut first = true;
 
-        if (idx > 0) && (idx % 100000 == 0) {
-            eprintln!("Called {} reads...", idx);
-        }
+    let mut end_of_buffer = false;
+    loop {
+        if let Some(group) = duplicate_iterator.next()? {
+            idx += 1;
 
-        // ensure that there was no issue in reading
-        let group = elem?;
+            if (idx > 0) && (idx % 100000 == 0) {
+                eprintln!("Called {} reads...", idx);
+            }
 
-        let single = group.records.len() == 1;
-        if (single && !duplicates_only) || group.ignore {
-            buf_locations.push(GroupType::Simplex(buf_single.len()));
-            buf_single.push(group)
+            let single = group.records.len() == 1;
+            if (single && !duplicates_only) || group.ignore {
+                buf_locations.push(GroupType::Simplex(buf_single.len()));
+                buf_single.push(group)
+            } else {
+                buf_locations.push(GroupType::Duplex(buf_duplicates.len()));
+                buf_duplicates.push(group);
+            }
+
+            end_of_buffer = false;
         } else {
-            buf_locations.push(GroupType::Duplex(buf_duplicates.len()));
-            buf_duplicates.push(group);
-        }
-
-        let end_of_buffer = duplicate_iterator.peek().is_none();
+            end_of_buffer = true;
+        };
 
         // if we have filled the buffer OR are at the end, process this chunk
         if (buf_locations.len() == chunk_size) || end_of_buffer {
@@ -89,6 +93,11 @@ pub fn consensus(
 
                 // output original reads as well, if requested
                 if matches!(loc, GroupType::Duplex(_)) && output_originals {
+                    if !first {
+                        writer.write_all(b"\n")?;
+                    }
+                    first = false;
+
                     let group_size = group.records.len();
                     for (idx, r) in group.records.iter_mut().enumerate() {
                         r.add_metadata(
@@ -99,24 +108,28 @@ pub fn consensus(
                             group.avg_qual,
                         );
                         r.write_fastq(&mut *writer)?;
-                        writer.write_all(b"\n")?;
                     }
                 }
 
+                // add a newline at the start, unless this is the first line in the file
+                if !first {
+                    writer.write_all(b"\n")?;
+                }
+                first = false;
+
                 let rec = group.consensus.as_mut().expect("Should never be None");
                 rec.write_fastq(&mut *writer)?;
-
-                // add a newline at the end, if we are not at the very end of the file
-                let last = (pos == (buf_locations.len() - 1)) && end_of_buffer;
-                if !last {
-                    writer.write_all(b"\n")?
-                }
             }
 
             // empty the buffer
             buf_single.clear();
             buf_duplicates.clear();
             buf_locations.clear();
+        }
+
+        // if we are at the end, let's go
+        if end_of_buffer {
+            break;
         }
     }
 

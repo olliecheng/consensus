@@ -1,11 +1,14 @@
-use crate::file::FastqFile;
-use crate::index::IndexRecord;
-use anyhow::{Context, Result};
-use csv::ReaderBuilder;
+use crate::index::{IndexReader, IndexRecord};
+use crate::io::Record;
+use anyhow::{ensure, Context, Result};
 use indexmap::IndexMap;
+use serde::de::Error;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader};
+use std::ops::Index;
+use std::rc::Rc;
+use std::sync::Arc;
 
 /// A struct representing the position of a record.
 ///
@@ -13,11 +16,56 @@ use std::io::{BufRead, BufReader};
 ///
 /// * `pos` - The position of the record in the input file
 /// * `length` - The length of the record, in bytes
+#[derive(Copy, Clone)]
 pub struct RecordPosition {
     pub pos: usize,
     pub length: usize,
 }
-pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<RecordPosition>>;
+// pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<RecordPosition>>;
+
+pub struct DuplicateMap {
+    pub by_id: IndexMap<RecordIdentifier, Vec<RecordPosition>>,
+    pub pos_to_id: IndexMap<usize, RecordIdentifier>,
+}
+
+impl DuplicateMap {
+    pub fn new() -> Self {
+        DuplicateMap {
+            by_id: Default::default(),
+            pos_to_id: Default::default(),
+        }
+    }
+
+    pub fn insert(&mut self, record: &IndexRecord) {
+        let id = RecordIdentifier::from_string(&record.id);
+
+        let rec_pos = RecordPosition {
+            pos: record.pos,
+            length: record.rec_len,
+        };
+
+        self.pos_to_id.insert(record.pos, id.clone());
+
+        self.by_id
+            .entry(id)
+            .and_modify(|e| e.push(rec_pos))
+            .or_insert(vec![rec_pos]);
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.by_id.shrink_to_fit();
+        self.pos_to_id.shrink_to_fit();
+    }
+
+    pub fn records_by_id(&self, id: &RecordIdentifier) -> Option<&Vec<RecordPosition>> {
+        self.by_id.get(id)
+    }
+
+    pub fn records_by_pos(&self, pos: &usize) -> Option<&Vec<RecordPosition>> {
+        let id = self.pos_to_id.get(pos)?;
+        self.records_by_id(id)
+    }
+}
 
 /// A struct representing a record identifier with a head and a tail.
 ///
@@ -25,7 +73,7 @@ pub type DuplicateMap = IndexMap<RecordIdentifier, Vec<RecordPosition>>;
 ///
 /// * `head` - The head part of the record identifier.
 /// * `tail` - The tail part of the record identifier.
-#[derive(Eq, PartialEq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Hash, Debug, Serialize, Deserialize, Clone)]
 pub struct RecordIdentifier {
     pub head: String,
     pub tail: String,
@@ -81,96 +129,76 @@ pub struct DuplicateStatistics {
     pub distribution: BTreeMap<usize, usize>,
 }
 
-/// Reads a FASTQ index file and identifies duplicate records.
-///
-/// # Arguments
-///
-/// * `index` - A string slice that holds the path to the index file.
-///
-/// # Returns
-///
-/// A tuple containing:
-/// - `DuplicateMap`: A map of `RecordIdentifier` to a vector of indices where duplicates are found.
-/// - `DuplicateStatistics`: Statistics about the duplicates found.
-/// - `FastqFile`: Metadata about the FASTQ file.
-///
-/// # Errors
-///
-/// This function will return an error if the file cannot be opened or read, or if the file format is incorrect.
-pub fn get_duplicates(index: &str) -> Result<(DuplicateMap, DuplicateStatistics, FastqFile)> {
-    let mut map = DuplicateMap::new();
-    let mut stats = DuplicateStatistics {
-        total_reads: 0,
-        duplicate_reads: 0,
-        duplicate_ids: 0,
-        proportion_duplicate: 0.0,
-        distribution: BTreeMap::new(),
-    };
+impl IndexReader {
+    /// Reads a FASTQ index file and identifies duplicate records.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - A string slice that holds the path to the index file.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// - `DuplicateMap`: A map of `RecordIdentifier` to a vector of indices where duplicates are found.
+    /// - `DuplicateStatistics`: Statistics about the duplicates found.
+    /// - `FastqFile`: Metadata about the FASTQ file.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the file cannot be opened or read, or if the file format is incorrect.
+    pub fn get_duplicates(&mut self) -> Result<(DuplicateMap, DuplicateStatistics)> {
+        let mut map = DuplicateMap::new();
 
-    let file = std::fs::File::open(index)?;
-    let mut file = BufReader::new(file);
-
-    let mut header = String::new();
-
-    // read the first line, which is NOT in CSV format
-    file.read_line(&mut header)
-        .context("Could not read the first line")?;
-
-    assert!(header.starts_with('#'));
-    let info: FastqFile = serde_json::from_str(&header[1..])?;
-
-    // Create CSV builder
-    let mut reader = ReaderBuilder::new()
-        .delimiter(b'\t')
-        .has_headers(true)
-        .from_reader(&mut file);
-
-    // Parse each row of the reader
-    for read in reader.deserialize() {
-        let record: IndexRecord = read?;
-        stats.total_reads += 1;
-
-        let id = RecordIdentifier::from_string(&record.id);
-
-        let rec_pos = RecordPosition {
-            pos: record.pos,
-            length: record.rec_len,
+        let mut stats = DuplicateStatistics {
+            total_reads: 0,
+            duplicate_reads: 0,
+            duplicate_ids: 0,
+            proportion_duplicate: 0.0,
+            distribution: BTreeMap::new(),
         };
-        if let Some(v) = map.get_mut(&id) {
-            v.push(rec_pos);
-        } else {
-            map.insert(id, vec![rec_pos]);
-        }
-    }
 
-    map.shrink_to_fit(); // optimise memory usage
-
-    // Compute information about the duplicates
-    stats.duplicate_ids = 0;
-    stats.duplicate_reads = map
-        .values()
-        .map(|v| {
-            let length = v.len();
-            if length > 1 {
-                stats.duplicate_ids += 1;
-
-                if let Some(x) = stats.distribution.get_mut(&length) {
-                    *x += 1
-                } else {
-                    stats.distribution.insert(length, 1);
-                }
-                length
-            } else {
-                0
+        // Parse each row of the reader
+        for read in self.index_records()? {
+            let record: IndexRecord = read?;
+            if record.ignored {
+                continue;
             }
-        })
-        .sum();
 
-    stats
-        .distribution
-        .insert(1, stats.total_reads - stats.duplicate_reads);
+            stats.total_reads += 1;
 
-    stats.proportion_duplicate = stats.duplicate_reads as f64 / stats.total_reads as f64;
+            map.insert(&record);
+        }
 
-    Ok((map, stats, info))
+        map.shrink_to_fit(); // optimise memory usage
+
+        // Compute information about the duplicates
+        stats.duplicate_ids = 0;
+        stats.duplicate_reads = map
+            .by_id
+            .values()
+            .map(|v| {
+                let length = v.len();
+                if length > 1 {
+                    stats.duplicate_ids += 1;
+
+                    if let Some(x) = stats.distribution.get_mut(&length) {
+                        *x += 1
+                    } else {
+                        stats.distribution.insert(length, 1);
+                    }
+                    length
+                } else {
+                    0
+                }
+            })
+            .sum();
+
+        stats
+            .distribution
+            .insert(1, stats.total_reads - stats.duplicate_reads);
+
+        stats.proportion_duplicate = stats.duplicate_reads as f64 / stats.total_reads as f64;
+
+        Ok((map, stats))
+    }
 }

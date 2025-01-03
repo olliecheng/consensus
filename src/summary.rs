@@ -1,4 +1,4 @@
-use crate::duplicates;
+use crate::{duplicates, index};
 use anyhow::{Context, Result};
 use serde_json::json;
 
@@ -17,10 +17,11 @@ const TEMPLATE_HTML: &str = include_str!("summary_template.html");
 /// * `Result<()>` - Returns an `Ok(())` if successful, or an `anyhow::Error` if an error occurs.
 pub fn summarize(index: &str, output: &str) -> Result<()> {
     info!("Summarising index at {index}");
-    let (_, statistics, info) = duplicates::get_duplicates(index)?;
-    let gb = info.gb;
+    let mut index = index::IndexReader::from_path(index)?;
+    let (_, statistics) = index.get_duplicates()?;
+    let gb = index.metadata.gb;
 
-    let mut data = serde_json::to_value(info).context("Could not serialize info")?;
+    let mut data = serde_json::to_value(index.metadata).context("Could not serialize info")?;
 
     println!("{}", serde_json::to_string(&statistics)?);
     // round "gb" stat to 3dp

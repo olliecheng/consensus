@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default)]
-pub struct FastqFile {
+pub struct ReadFileMetadata {
     pub nailpolish_version: String,
     pub file_path: String,
     pub index_date: String,
