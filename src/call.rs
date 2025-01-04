@@ -38,6 +38,8 @@ pub fn consensus(
     duplicates_only: bool,
     output_originals: bool,
 ) -> Result<()> {
+    info!("Creating thread pool with {threads} threads");
+
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build_global()?;
@@ -60,7 +62,7 @@ pub fn consensus(
             idx += 1;
 
             if (idx > 0) && (idx % 100000 == 0) {
-                eprintln!("Called {} reads...", idx);
+                info!("Called {} reads...", idx);
             }
 
             let single = group.records.len() == 1;

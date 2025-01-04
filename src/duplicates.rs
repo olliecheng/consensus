@@ -147,6 +147,8 @@ impl IndexReader {
     ///
     /// This function will return an error if the file cannot be opened or read, or if the file format is incorrect.
     pub fn get_duplicates(&mut self) -> Result<(DuplicateMap, DuplicateStatistics)> {
+        info!("Reading index file...");
+
         let mut map = DuplicateMap::new();
 
         let mut stats = DuplicateStatistics {
@@ -198,6 +200,8 @@ impl IndexReader {
             .insert(1, stats.total_reads - stats.duplicate_reads);
 
         stats.proportion_duplicate = stats.duplicate_reads as f64 / stats.total_reads as f64;
+
+        info!("Generated duplicate map from index file");
 
         Ok((map, stats))
     }
