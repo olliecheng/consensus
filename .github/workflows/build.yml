@@ -41,7 +41,7 @@ jobs:
           args: "--release"
 
       - name: Upload Linux Binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: nailpolish-linux-x86_64
           path: target/x86_64-unknown-linux-gnu/release/nailpolish
@@ -68,6 +68,9 @@ jobs:
       - name: Add aarch64-apple-darwin target
         run: rustup target add aarch64-apple-darwin
 
+      - name: Add build information to environment
+        run: echo "CARGO_BUILD_DESC=built on GitHub Actions from commit $(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
       - name: Build for macOS (x86_64)
         run: cargo build --release --target x86_64-apple-darwin
 
@@ -82,7 +85,7 @@ jobs:
             -output nailpolish-macos-universal
 
       - name: Upload macOS Universal Binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: nailpolish-macos-universal
           path: nailpolish-macos-universal
