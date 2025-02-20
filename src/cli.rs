@@ -2,7 +2,13 @@ use clap::builder::styling::AnsiColor;
 use clap::builder::Styles;
 use clap::{Parser, Subcommand};
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+const fn extra_build_info() -> &'static str {
+    match option_env!("CARGO_BUILD_DESC") {
+        Some(e) => e,
+        None => env!("CARGO_PKG_VERSION"),
+    }
+}
+pub const VERSION: &str = extra_build_info();
 const INFO_STRING: &str = "
 💅 nailpolish version ";
 const AFTER_STRING: &str = "
